@@ -126,10 +126,10 @@ export default function PatientLayout({
 
       {/* Content */}
       <div className="min-h-screen flex flex-col bg-background">
-        <header className="bg-white border-b px-4 md:px-6 h-14 flex items-center justify-between">
+        <header className="bg-brand-red-light text-white px-4 md:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
-              className="md:hidden rounded-md p-2 hover:bg-neutral-100"
+              className="md:hidden rounded-md p-2 hover:bg-white/10"
               onClick={() => setDrawerOpen(true)}
               aria-label="Open menu"
             >
