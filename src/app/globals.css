@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/* Brand tokens: fixed palette that remains readable across system schemes */
+:root {
+  --background: #ffffff; /* White */
+  --foreground: #0a0a0a; /* Nearly black */
+  --brand-red: #dc2626; /* Red 600 */
+  --brand-red-light: #fca5a5; /* Red 300 */
+  --brand-white: #ffffff;
+  --brand-text: #0a0a0a;
+}
+
+/* stylelint-disable at-rule-no-unknown */
+@theme inline {
+  /* Colors available to Tailwind classes like bg-background, text-foreground, bg-brand-red */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand-red: var(--brand-red);
+  --color-brand-red-light: var(--brand-red-light);
+  --color-brand-white: var(--brand-white);
+  --color-brand-text: var(--brand-text);
+
+  /* Fonts from layout.tsx font variables */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Radii */
+  --radius-card: 0.75rem;
+}
+/* stylelint-enable at-rule-no-unknown */
+
+/* Do NOT auto-switch on prefers-color-scheme: keep consistent UI */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Utility helpers */
+.card {
+  border-radius: var(--radius-card);
+  background-color: var(--brand-white);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
+}
+
+.btn-primary {
+  background-color: var(--brand-red);
+  color: #fff;
+}
+.btn-primary:hover {
+  background-color: color-mix(in oklab, var(--brand-red), #000 10%);
+}
