@@ -55,7 +55,7 @@ export default function AdminLayout({
       className={`min-h-screen grid grid-cols-1 ${collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[240px_1fr]"}`}
     >
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex bg-brand-red text-white p-4 flex-col gap-3">
+      <aside className="hidden md:flex bg-brand-red-light text-white p-4 flex-col gap-3">
         <div className="text-lg font-semibold mb-2">{collapsed ? "WA" : "WeCare Admin"}</div>
         <nav className="flex-1 space-y-1">
           <Link href="/dashboard/admin" className="block px-3 py-2 rounded hover:bg-brand-red-light/30">
@@ -94,34 +94,34 @@ export default function AdminLayout({
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
-          <aside className="relative z-10 bg-brand-red text-white w-64 h-full p-4 flex flex-col gap-3">
+          <aside className="relative z-10 bg-brand-red-light text-white w-64 h-full p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between mb-2">
               <div className="text-lg font-semibold">WeCare Admin</div>
               <button
                 onClick={() => setDrawerOpen(false)}
-                className="rounded-md p-2 hover:bg-white/10"
+                className="rounded-md p-2 hover:bg-white/20"
                 aria-label="Close menu"
               >
                 <X size={20} />
               </button>
             </div>
             <nav className="flex-1 space-y-1">
-              <Link href="/dashboard/admin" className="block px-3 py-2 rounded hover:bg-white/10" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/admin" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
                 Main Dashboard
               </Link>
-              <Link href="/dashboard/admin/inventory" className="block px-3 py-2 rounded hover:bg-white/10" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/admin/inventory" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
                 Inventory
               </Link>
-              <Link href="/dashboard/admin/patients" className="block px-3 py-2 rounded hover:bg-white/10" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/admin/patients" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
                 Patients
               </Link>
-              <Link href="/dashboard/admin/appointments" className="block px-3 py-2 rounded hover:bg-white/10" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/admin/appointments" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
                 Appointments
               </Link>
-              <Link href="/dashboard/admin/messages" className="block px-3 py-2 rounded hover:bg-white/10" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/admin/messages" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
                 Messages
               </Link>
-              <Link href="/dashboard/admin/profile" className="block px-3 py-2 rounded hover:bg-white/10" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/admin/profile" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
                 Profile
               </Link>
             </nav>
@@ -132,10 +132,10 @@ export default function AdminLayout({
 
       {/* Content */}
       <div className="min-h-screen flex flex-col bg-background">
-        <header className="bg-white border-b px-4 md:px-6 h-14 flex items-center justify-between">
+        <header className="bg-brand-red text-white px-4 md:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
-              className="md:hidden rounded-md p-2 hover:bg-neutral-100"
+              className="md:hidden rounded-md p-2 hover:bg-white/20"
               onClick={() => setDrawerOpen(true)}
               aria-label="Open menu"
             >

@@ -128,10 +128,13 @@ export default function InventoryPage() {
                     )}
                   </td>
                   <td className="p-2 border-b">
-                    <select className="rounded-md border px-2 py-1" value={it.status} onChange={(e)=>updateItem(it.id,{status: e.target.value as Item["status"]})}>
-                      <option value="active">active</option>
-                      <option value="inactive">inactive</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${it.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{it.status}</span>
+                      <select className="rounded-md border px-2 py-1" value={it.status} onChange={(e)=>updateItem(it.id,{status: e.target.value as Item["status"]})}>
+                        <option value="active">active</option>
+                        <option value="inactive">inactive</option>
+                      </select>
+                    </div>
                   </td>
                   <td className="p-2 border-b space-x-2">
                     <button className="rounded-md border px-3 py-1" onClick={()=>updateItem(it.id,{name: prompt("Name", it.name) || it.name, description: prompt("Description", it.description || "") || it.description || null})}>Edit</button>
