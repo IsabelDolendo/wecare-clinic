@@ -57,7 +57,7 @@ export default function EVaccinationCardPage() {
           .select("id, name")
           .in("id", itemIds);
         const map: Record<string, Item> = {};
-        (itemsData ?? []).forEach((i: any) => { map[i.id] = i; });
+        ((itemsData ?? []) as Item[]).forEach((i) => { map[i.id] = i; });
         setItems(map);
       }
 
@@ -69,7 +69,7 @@ export default function EVaccinationCardPage() {
           .select("id, full_name")
           .in("id", apptIds);
         const amap: Record<string, Appt> = {};
-        (apptData ?? []).forEach((a: any) => { amap[a.id] = a; });
+        ((apptData ?? []) as Appt[]).forEach((a) => { amap[a.id] = a; });
         setAppts(amap);
       }
 

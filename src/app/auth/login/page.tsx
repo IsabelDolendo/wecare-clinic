@@ -6,7 +6,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -18,6 +18,14 @@ const LoginSchema = z.object({
 type LoginValues = z.infer<typeof LoginSchema>;
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-center">Loading…</div>}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
   const search = useSearchParams();
   const redirectedFrom = search.get("redirectedFrom") ?? "/dashboard/patient";
@@ -165,7 +173,7 @@ export default function LoginPage() {
             </form>
 
             <p className="text-sm mt-6 text-center">
-              Don&apos;t have an account?{" "}
+              Don&apos;t have an account? {" "}
               <Link href="/auth/register" className="text-brand-red underline">
                 Register
               </Link>

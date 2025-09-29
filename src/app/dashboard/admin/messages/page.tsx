@@ -12,6 +12,7 @@ type Msg = {
 };
 
 type Contact = { id: string; full_name: string | null; phone: string | null };
+type RecentRow = { sender_user_id: string; recipient_user_id: string; created_at: string };
 
 export default function AdminMessagesPage() {
   const [me, setMe] = useState<string | null>(null);
@@ -24,7 +25,6 @@ export default function AdminMessagesPage() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    let active = true;
     (async () => {
       setLoading(true);
       const { data: auth } = await supabase.auth.getUser();
@@ -44,7 +44,7 @@ export default function AdminMessagesPage() {
         .order("created_at", { ascending: false })
         .limit(200);
       const contactIds = new Set<string>();
-      (recent ?? []).forEach((m: any) => {
+      (recent ?? []).forEach((m: RecentRow) => {
         const other = m.sender_user_id === user.id ? m.recipient_user_id : m.sender_user_id;
         if (other) contactIds.add(other);
       });
@@ -54,12 +54,14 @@ export default function AdminMessagesPage() {
           .from("profiles")
           .select("id, full_name, phone")
           .in("id", Array.from(contactIds));
-        setContacts((profs ?? []) as Contact[]);
-        if (!activeId && profs && profs.length > 0) setActiveId(profs[0].id as string);
+        const list = (profs ?? []) as Contact[];
+        setContacts(list);
+        if (list.length > 0) {
+          setActiveId((prev) => prev ?? (list[0].id as string));
+        }
       }
       setLoading(false);
     })();
-    return () => { active = false; };
   }, []);
 
   useEffect(() => {

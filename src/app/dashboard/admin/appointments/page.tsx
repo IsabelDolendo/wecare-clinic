@@ -70,8 +70,9 @@ export default function AdminAppointmentsPage() {
       if (!res.ok) throw new Error(await res.text());
       await supabase.from("appointments").update({ status: "pending" }).eq("id", appt.id);
       await load();
-    } catch (e: any) {
-      alert(e.message ?? "Failed to send SMS");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(msg || "Failed to send SMS");
     } finally {
       setWorking(null);
     }
@@ -110,8 +111,9 @@ export default function AdminAppointmentsPage() {
       if (aErr) throw aErr;
       await load();
       await loadItems();
-    } catch (e: any) {
-      alert(e.message ?? "Failed to mark as settled");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(msg || "Failed to mark as settled");
     } finally {
       setWorking(null);
     }
