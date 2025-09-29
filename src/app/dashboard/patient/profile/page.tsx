@@ -22,6 +22,7 @@ export default function PatientProfilePage() {
       setError(null);
       setOk(null);
       const { data: auth } = await supabase.auth.getUser();
+      if (!active) return;
       const u = auth.user;
       if (!u) {
         setError("Not authenticated");
@@ -31,6 +32,7 @@ export default function PatientProfilePage() {
       setUserId(u.id);
       setEmail(u.email ?? "");
       const { data: prof } = await supabase.from("profiles").select("full_name, phone").eq("id", u.id).single();
+      if (!active) return;
       setFullName(prof?.full_name ?? "");
       setPhone(prof?.phone ?? "");
       setLoading(false);

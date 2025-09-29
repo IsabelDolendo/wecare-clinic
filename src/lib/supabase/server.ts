@@ -12,10 +12,10 @@ export async function createSupabaseServerClient() {
           return cookieStore.get(name)?.value;
         },
         set(_name: string, _value: string, _options: CookieOptions) {
-          // no-op in RSC
+          void _name; void _value; void _options; // no-op in RSC
         },
         remove(_name: string, _options: CookieOptions) {
-          // no-op in RSC
+          void _name; void _options; // no-op in RSC
         },
       },
     }

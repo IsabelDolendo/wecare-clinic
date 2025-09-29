@@ -28,7 +28,7 @@ export default function LoginPage() {
 function LoginContent() {
   const router = useRouter();
   const search = useSearchParams();
-  const redirectedFrom = search.get("redirectedFrom") ?? "/dashboard/patient";
+  const redirectedFrom = search.get("redirectedFrom");
   const [error, setError] = useState<string | null>(null);
   const {
     register,
@@ -46,12 +46,28 @@ function LoginContent() {
 
   const onSubmit = async (values: LoginValues) => {
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
       email: values.email,
       password: values.password,
     });
-    if (error) return setError(error.message);
-    router.push(redirectedFrom);
+    if (signInErr) return setError(signInErr.message);
+
+    // Determine role on the client and route directly to the correct dashboard
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth.user;
+    let isAdmin = false;
+    if (user) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      isAdmin = ((prof?.role as string | undefined)?.toLowerCase() === "admin");
+    }
+
+    const roleTarget = isAdmin ? "/dashboard/admin" : "/dashboard/patient";
+    const useRedirectedFrom = redirectedFrom && !redirectedFrom.startsWith("/dashboard");
+    router.push(useRedirectedFrom ? redirectedFrom : roleTarget);
   };
 
   const sendPasswordReset = async () => {

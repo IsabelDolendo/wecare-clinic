@@ -3,16 +3,40 @@
 import Link from "next/link";
 import LogoutButton from "@/components/LogoutButton";
 import NotificationsBell from "@/components/NotificationsBell";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
 
 export default function PatientLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false); // desktop collapse
   const [drawerOpen, setDrawerOpen] = useState(false); // mobile/tablet drawer
+
+  // If an admin lands here, bounce them to the admin dashboard
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const user = auth.user;
+      if (!mounted || !user) return;
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (prof?.role === "admin") {
+        router.replace("/dashboard/admin");
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
   return (
     <div

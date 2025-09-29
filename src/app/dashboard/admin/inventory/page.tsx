@@ -78,6 +78,12 @@ export default function InventoryPage() {
         )}
       </div>
 
+      {error && (
+        <div className="text-sm text-red-700 bg-red-100 px-3 py-2 rounded-md">
+          {error}
+        </div>
+      )}
+
       <div className="card p-4">
         <h3 className="font-semibold mb-2">Add Item</h3>
         <div className="grid md:grid-cols-4 gap-2">

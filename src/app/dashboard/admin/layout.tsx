@@ -3,16 +3,52 @@
 import Link from "next/link";
 import LogoutButton from "@/components/LogoutButton";
 import NotificationsBell from "@/components/NotificationsBell";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Guard: only allow admin users; otherwise redirect to patient dashboard
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const user = auth.user;
+      if (!mounted) return;
+      if (!user) {
+        router.replace("/auth/login");
+        return;
+      }
+      // Trust metadata first if present
+      const metaRole =
+        typeof user.user_metadata === "object" &&
+        user.user_metadata !== null &&
+        "role" in user.user_metadata
+          ? String((user.user_metadata as Record<string, unknown>).role)
+          : undefined;
+      if (metaRole === "admin") return;
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (prof?.role !== "admin") {
+        router.replace("/dashboard/patient");
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
   return (
     <div
