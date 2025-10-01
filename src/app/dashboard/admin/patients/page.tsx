@@ -166,6 +166,12 @@ export default function AdminPatientsPage() {
       ? "bg-red-100 text-red-700"
       : "bg-yellow-100 text-yellow-800";
 
+  const vaccinationStatusLabel = (dose: number) => {
+    if (dose >= 3) return "Fully Vaccinated";
+    if (dose === 0) return "Not Started";
+    return "In Progress";
+  };
+
   const formatDate = (value: string | null) => (value ? new Date(value).toLocaleString() : "—");
 
   const getProfileName = (userId: string) => profiles[userId]?.full_name ?? userId.substring(0, 6);
@@ -314,13 +320,27 @@ export default function AdminPatientsPage() {
         {fully.length === 0 ? (
           <p className="text-sm text-neutral-600">No fully vaccinated patients.</p>
         ) : (
-          <ul className="text-sm list-disc ml-5 space-y-1">
+          <ul className="text-sm space-y-2">
             {fully.map((r) => (
               <li key={r.userId}>
-                {getProfileName(r.userId)} — 3/3 doses
-                {getContactNumber(r.userId) && (
-                  <span className="ml-2 text-xs text-neutral-600">({getContactNumber(r.userId)})</span>
-                )}
+                <button
+                  type="button"
+                  onClick={() => openView(r)}
+                  className="w-full rounded-md border px-3 py-2 text-left hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-red-400"
+                >
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <span className="font-medium">{getProfileName(r.userId)}</span>
+                      <span className="ml-2 text-xs text-neutral-500">3/3 doses</span>
+                      {getContactNumber(r.userId) && (
+                        <span className="ml-2 text-xs text-neutral-600">({getContactNumber(r.userId)})</span>
+                      )}
+                    </div>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${progressClass(r.maxDose)}`}>
+                      {vaccinationStatusLabel(r.maxDose)}
+                    </span>
+                  </div>
+                </button>
               </li>
             ))}
           </ul>
@@ -340,10 +360,14 @@ export default function AdminPatientsPage() {
                 <div><span className="text-neutral-500">Patient:</span> {getProfileName(viewPatient.userId)}</div>
                 <div><span className="text-neutral-500">Contact:</span> {getContactNumber(viewPatient.userId) ?? "—"}</div>
                 <div>
-                  <span className="text-neutral-500">Progress:</span>{" "}
+                  <span className="text-neutral-500">Status:</span>{" "}
                   <span className={`px-2 py-0.5 rounded-full text-xs ${progressClass(viewPatient.maxDose)}`}>
-                    {viewPatient.maxDose}/3 doses
+                    {vaccinationStatusLabel(viewPatient.maxDose)}
                   </span>
+                </div>
+                <div>
+                  <span className="text-neutral-500">Progress:</span>{" "}
+                  <span className="font-medium">{viewPatient.maxDose}/3 doses</span>
                 </div>
                 <div>
                   <h4 className="font-semibold mb-2">Vaccination History</h4>

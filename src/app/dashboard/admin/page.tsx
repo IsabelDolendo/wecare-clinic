@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { Bar, BarChart, CartesianGrid, PieChart, Pie, Cell, Tooltip, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { supabase } from "@/lib/supabase/client";
 
 type Item = { id: string; name: string; stock: number; low_stock_threshold: number };
@@ -10,6 +10,7 @@ type Item = { id: string; name: string; stock: number; low_stock_threshold: numb
 export default function AdminHome() {
   const [todayCount, setTodayCount] = useState<number>(0);
   const [lowStock, setLowStock] = useState<Item[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<Item[]>([]);
   const [dist, setDist] = useState<{ first: number; second: number; third: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +41,9 @@ export default function AdminHome() {
       const { data: allItems } = await supabase
         .from("inventory_items")
         .select("id,name,stock,low_stock_threshold");
-      const lows = ((allItems ?? []) as Item[]).filter((i) => i.stock <= i.low_stock_threshold);
+      const items = (allItems ?? []) as Item[];
+      const lows = items.filter((i) => i.stock <= i.low_stock_threshold);
+      setInventoryItems(items);
       setLowStock(lows);
 
       // Vaccination distribution
@@ -73,6 +76,25 @@ export default function AdminHome() {
     ] : []
   ), [dist]);
 
+  const inventoryChartData = useMemo(
+    () =>
+      inventoryItems.map((item) => ({
+        name: item.name,
+        stock: item.stock,
+        threshold: item.low_stock_threshold,
+      })),
+    [inventoryItems]
+  );
+
+  const inventoryColors = useMemo(
+    () =>
+      inventoryChartData.map((_, index) => {
+        const hue = (index * 67) % 360;
+        return `hsl(${hue} 80% 60%)`;
+      }),
+    [inventoryChartData]
+  );
+
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <section className="card p-4">
@@ -103,6 +125,39 @@ export default function AdminHome() {
                 </Pie>
                 <Tooltip />
               </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </section>
+
+      <section className="card p-4 md:col-span-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold mb-2">Inventory Overview</h2>
+          <Link href="/dashboard/admin/inventory" className="text-sm underline">View Inventory</Link>
+        </div>
+        {loading ? (
+          <p className="text-sm text-neutral-600">Loading…</p>
+        ) : inventoryChartData.length === 0 ? (
+          <p className="text-sm text-neutral-600">No inventory items found.</p>
+        ) : (
+          <div className="w-full h-72">
+            <ResponsiveContainer>
+              <BarChart data={inventoryChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#fef2f2" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} interval={0} angle={-25} textAnchor="end" height={70} />
+                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} label={{ value: "Stock left", angle: -90, position: "insideLeft", offset: 10 }} />
+                <Tooltip
+                  formatter={(value: number, _name, payload) => {
+                    const threshold = payload?.payload?.threshold;
+                    return [`${value}`, `Stock left${typeof threshold === "number" ? ` (threshold ${threshold})` : ""}`];
+                  }}
+                />
+                <Bar dataKey="stock" radius={[4, 4, 0, 0]}>
+                  {inventoryColors.map((color, idx) => (
+                    <Cell key={`inventory-bar-${idx}`} fill={color} />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
         )}

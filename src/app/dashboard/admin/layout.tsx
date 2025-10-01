@@ -1,11 +1,10 @@
 "use client";
-
 import Link from "next/link";
 import LogoutButton from "@/components/LogoutButton";
 import NotificationsBell from "@/components/NotificationsBell";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 export default function AdminLayout({
@@ -14,8 +13,35 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const navItems = useMemo(
+    () => [
+      { href: "/dashboard/admin", label: "Main Dashboard" },
+      { href: "/dashboard/admin/inventory", label: "Inventory" },
+      { href: "/dashboard/admin/patients", label: "Patients" },
+      { href: "/dashboard/admin/messages", label: "Messages" },
+      { href: "/dashboard/admin/profile", label: "Profile" },
+    ],
+    []
+  );
+
+  const isActive = (href: string) => {
+    if (!pathname) return false;
+    if (href === "/dashboard/admin") {
+      return pathname === href;
+    }
+    return pathname.startsWith(href);
+  };
+
+  const desktopLinkClass = (href: string) => {
+    const base = "block px-3 py-2 rounded transition-colors";
+    return isActive(href) ? `${base} bg-white text-red-600` : `${base} hover:bg-red-500/40`;
+  };
+
+  const mobileLinkClass = desktopLinkClass;
 
   // Guard: only allow admin users; otherwise redirect to patient dashboard
   useEffect(() => {
@@ -52,30 +78,17 @@ export default function AdminLayout({
 
   return (
     <div
-      className={`min-h-screen grid grid-cols-1 ${collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[240px_1fr]"}`}
+      className={`min-h-screen md:h-screen md:overflow-hidden grid grid-cols-1 ${collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[240px_1fr]"}`}
     >
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex bg-brand-red-light text-white p-4 flex-col gap-3">
+      <aside className="hidden md:flex bg-red-600 text-white p-4 flex-col gap-3 md:sticky md:top-0 md:h-screen">
         <div className="text-lg font-semibold mb-2">{collapsed ? "WA" : "WeCare Admin"}</div>
         <nav className="flex-1 space-y-1">
-          <Link href="/dashboard/admin" className="block px-3 py-2 rounded hover:bg-brand-red-light/30">
-            <span className={collapsed ? "hidden" : "inline"}>Main Dashboard</span>
-          </Link>
-          <Link href="/dashboard/admin/inventory" className="block px-3 py-2 rounded hover:bg-brand-red-light/30">
-            <span className={collapsed ? "hidden" : "inline"}>Inventory</span>
-          </Link>
-          <Link href="/dashboard/admin/patients" className="block px-3 py-2 rounded hover:bg-brand-red-light/30">
-            <span className={collapsed ? "hidden" : "inline"}>Patients</span>
-          </Link>
-          <Link href="/dashboard/admin/appointments" className="block px-3 py-2 rounded hover:bg-brand-red-light/30">
-            <span className={collapsed ? "hidden" : "inline"}>Appointments</span>
-          </Link>
-          <Link href="/dashboard/admin/messages" className="block px-3 py-2 rounded hover:bg-brand-red-light/30">
-            <span className={collapsed ? "hidden" : "inline"}>Messages</span>
-          </Link>
-          <Link href="/dashboard/admin/profile" className="block px-3 py-2 rounded hover:bg-brand-red-light/30">
-            <span className={collapsed ? "hidden" : "inline"}>Profile</span>
-          </Link>
+          {navItems.map((item) => (
+            <Link key={item.href} href={item.href} className={desktopLinkClass(item.href)}>
+              <span className={collapsed ? "hidden" : "inline"}>{item.label}</span>
+            </Link>
+          ))}
         </nav>
         <div className="mt-auto flex items-center justify-between">
           <button
@@ -94,7 +107,7 @@ export default function AdminLayout({
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
-          <aside className="relative z-10 bg-brand-red-light text-white w-64 h-full p-4 flex flex-col gap-3">
+          <aside className="relative z-10 bg-red-600 text-white w-64 h-full p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between mb-2">
               <div className="text-lg font-semibold">WeCare Admin</div>
               <button
@@ -106,24 +119,16 @@ export default function AdminLayout({
               </button>
             </div>
             <nav className="flex-1 space-y-1">
-              <Link href="/dashboard/admin" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
-                Main Dashboard
-              </Link>
-              <Link href="/dashboard/admin/inventory" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
-                Inventory
-              </Link>
-              <Link href="/dashboard/admin/patients" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
-                Patients
-              </Link>
-              <Link href="/dashboard/admin/appointments" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
-                Appointments
-              </Link>
-              <Link href="/dashboard/admin/messages" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
-                Messages
-              </Link>
-              <Link href="/dashboard/admin/profile" className="block px-3 py-2 rounded hover:bg-white/20" onClick={() => setDrawerOpen(false)}>
-                Profile
-              </Link>
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={mobileLinkClass(item.href)}
+                  onClick={() => setDrawerOpen(false)}
+                >
+                  {item.label}
+                </Link>
+              ))}
             </nav>
             <LogoutButton />
           </aside>
@@ -131,8 +136,8 @@ export default function AdminLayout({
       )}
 
       {/* Content */}
-      <div className="min-h-screen flex flex-col bg-background">
-        <header className="bg-brand-red text-white px-4 md:px-6 h-14 flex items-center justify-between">
+      <div className="flex flex-col bg-background min-h-screen md:h-screen md:overflow-hidden">
+        <header className="bg-red-600 text-white px-4 md:px-6 h-14 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <button
               className="md:hidden rounded-md p-2 hover:bg-white/20"
@@ -145,7 +150,7 @@ export default function AdminLayout({
           </div>
           <NotificationsBell />
         </header>
-        <main className="p-4 md:p-6 flex-1 overflow-auto">{children}</main>
+        <main className="p-4 md:p-6 flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>
   );

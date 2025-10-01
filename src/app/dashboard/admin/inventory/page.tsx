@@ -18,6 +18,9 @@ export default function InventoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", description: "", stock: 0, low_stock_threshold: 10 });
   const [saving, setSaving] = useState(false);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", description: "", stock: 0 });
+  const [updating, setUpdating] = useState(false);
 
   const lowStock = useMemo(() => items.filter(i => i.stock <= i.low_stock_threshold), [items]);
 
@@ -56,6 +59,49 @@ export default function InventoryPage() {
   async function updateItem(id: string, patch: Partial<Item>) {
     const { error } = await supabase.from("inventory_items").update(patch).eq("id", id);
     if (error) setError(error.message);
+    load();
+  }
+
+  function openEditModal(item: Item) {
+    setEditForm({
+      name: item.name,
+      description: item.description ?? "",
+      stock: item.stock,
+    });
+    setEditingItem(item);
+  }
+
+  function closeEditModal() {
+    setEditingItem(null);
+    setUpdating(false);
+  }
+
+  async function saveEdit() {
+    if (!editingItem) return;
+    const name = editForm.name.trim();
+    if (!name) {
+      setError("Name is required");
+      return;
+    }
+    setUpdating(true);
+    setError(null);
+    const parsedStock = Number(editForm.stock);
+    const stock = Number.isFinite(parsedStock) ? Math.max(0, Math.round(parsedStock)) : editingItem.stock;
+    const description = editForm.description.trim();
+    const { error } = await supabase
+      .from("inventory_items")
+      .update({
+        name,
+        description: description.length > 0 ? description : null,
+        stock,
+      })
+      .eq("id", editingItem.id);
+    if (error) {
+      setError(error.message);
+      setUpdating(false);
+      return;
+    }
+    closeEditModal();
     load();
   }
 
@@ -117,12 +163,7 @@ export default function InventoryPage() {
                   <td className="p-2 border-b">{it.name}</td>
                   <td className="p-2 border-b">{it.description ?? "—"}</td>
                   <td className="p-2 border-b">
-                    <input
-                      type="number"
-                      className="w-24 rounded-md border px-2 py-1"
-                      value={it.stock}
-                      onChange={(e)=>updateItem(it.id,{stock:Number(e.target.value)})}
-                    />
+                    <span className="font-medium">{it.stock}</span>
                     {it.stock <= it.low_stock_threshold && (
                       <span className="ml-2 text-xs text-red-700">Low stock</span>
                     )}
@@ -137,7 +178,7 @@ export default function InventoryPage() {
                     </div>
                   </td>
                   <td className="p-2 border-b space-x-2">
-                    <button className="rounded-md border px-3 py-1" onClick={()=>updateItem(it.id,{name: prompt("Name", it.name) || it.name, description: prompt("Description", it.description || "") || it.description || null})}>Edit</button>
+                    <button className="rounded-md border px-3 py-1" onClick={()=>openEditModal(it)}>Edit</button>
                     <button className="rounded-md border px-3 py-1" onClick={()=>deleteItem(it.id)}>Delete</button>
                   </td>
                 </tr>
@@ -146,6 +187,60 @@ export default function InventoryPage() {
           </table>
         )}
       </div>
+
+      {editingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md space-y-4 rounded-lg bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Edit Inventory Item</h3>
+                <p className="text-sm text-neutral-600">Update the name, description, and stock levels.</p>
+              </div>
+              <button className="text-sm text-neutral-500 hover:text-neutral-700" onClick={closeEditModal} disabled={updating}>
+                Close
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700">Name</label>
+                <input
+                  className="mt-1 w-full rounded-md border px-3 py-2"
+                  value={editForm.name}
+                  onChange={(e)=>setEditForm(f=>({...f, name: e.target.value}))}
+                  disabled={updating}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700">Description</label>
+                <textarea
+                  className="mt-1 w-full rounded-md border px-3 py-2"
+                  rows={3}
+                  value={editForm.description}
+                  onChange={(e)=>setEditForm(f=>({...f, description: e.target.value}))}
+                  disabled={updating}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700">Stock</label>
+                <input
+                  type="number"
+                  className="mt-1 w-full rounded-md border px-3 py-2"
+                  value={editForm.stock}
+                  onChange={(e)=>setEditForm(f=>({...f, stock: Number(e.target.value)}))}
+                  min={0}
+                  disabled={updating}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="rounded-md border px-4 py-2" onClick={closeEditModal} disabled={updating}>Cancel</button>
+              <button className="btn-primary rounded-md px-4 py-2" onClick={saveEdit} disabled={updating}>
+                {updating ? "Saving..." : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
