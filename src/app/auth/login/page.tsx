@@ -100,7 +100,14 @@ function LoginContent() {
       <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
         <div className="card w-full max-w-md overflow-hidden p-0">
           <div className="bg-brand-red p-6 md:p-7 flex items-center justify-center">
-            <Image src="/images/logo.jpg" alt="WeCare logo" width={112} height={112} className="shadow-md" />
+            <Image
+              src="/images/logo.jpg"
+              alt="WeCare logo"
+              width={320}
+              height={160}
+              className="h-auto max-h-32 w-full object-contain drop-shadow-lg"
+              priority
+            />
           </div>
           <div className="p-6">
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

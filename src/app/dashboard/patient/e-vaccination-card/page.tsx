@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { toPng } from "html-to-image";
 
 type Vacc = {
   id: string;
@@ -21,6 +22,9 @@ export default function EVaccinationCardPage() {
   const [appts, setAppts] = useState<Record<string, Appt>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     let active = true;
@@ -88,53 +92,98 @@ export default function EVaccinationCardPage() {
     return map;
   }, [rows]);
 
-  function printCard() {
-    window.print();
-  }
+  const downloadCard = useCallback(
+    async (groupKey: string) => {
+      const node = cardRefs.current[groupKey];
+      if (!node) return;
+      try {
+        setDownloadingKey(groupKey);
+        setError(null);
+        const dataUrl = await toPng(node, {
+          cacheBust: true,
+          pixelRatio: 2,
+          backgroundColor: "#ffffff",
+        });
+        const link = document.createElement("a");
+        const label = appts[groupKey]?.full_name ?? "vaccination-card";
+        const safeLabel = label.replace(/[^a-z0-9-_]+/gi, "_").replace(/_+/g, "_").toLowerCase();
+        link.download = `${safeLabel || "vaccination-card"}.png`;
+        link.href = dataUrl;
+        link.click();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to generate vaccination card image.";
+        setError(message);
+      } finally {
+        setDownloadingKey(null);
+      }
+    },
+    [appts]
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <h2 className="text-xl font-semibold">E‑Vaccination Card</h2>
         {rows.length > 0 && (
-          <button className="rounded-md border px-3 py-2" onClick={printCard}>Download / Print</button>
+          <p className="text-xs text-neutral-500">Use “Download PNG” under each card to export just that card.</p>
         )}
       </div>
       {loading && <p className="text-sm text-neutral-600">Loading…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {!loading && rows.length === 0 && (
+      {!loading && !error && rows.length === 0 && (
         <p className="text-sm text-neutral-600">No completed vaccinations yet.</p>
       )}
       {Array.from(grouped.entries()).map(([groupKey, doses]) => {
         const ap = appts[groupKey];
+        const sortedDoses = doses
+          .slice()
+          .sort((a, b) => (a.dose_number || 0) - (b.dose_number || 0));
+
         return (
-          <div key={groupKey} className="card p-4 break-inside-avoid-page">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-semibold">WeCare Clinic E‑Vaccination Card</div>
-                <div className="text-sm text-neutral-600">{ap?.full_name ?? "Patient"}</div>
+          <div className="space-y-3" key={groupKey}>
+            <div
+              className="card p-6 break-inside-avoid-page"
+              ref={(el) => {
+                cardRefs.current[groupKey] = el;
+              }}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="font-semibold text-lg">WeCare Clinic E‑Vaccination Card</div>
+                  <div className="text-sm text-neutral-600">{ap?.full_name ?? "Patient"}</div>
+                </div>
+                <div className="text-xs text-neutral-500">Generated: {new Date().toLocaleString()}</div>
               </div>
-              <div className="text-sm text-neutral-600">Generated: {new Date().toLocaleString()}</div>
-            </div>
-            <div className="mt-3 overflow-auto">
-              <table className="min-w-full border text-sm">
-                <thead className="bg-neutral-50">
-                  <tr>
-                    <th className="text-left p-2 border-b">Dose #</th>
-                    <th className="text-left p-2 border-b">Vaccine</th>
-                    <th className="text-left p-2 border-b">Administered At</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {doses.sort((a,b)=> (a.dose_number||0)-(b.dose_number||0)).map((d) => (
-                    <tr key={d.id}>
-                      <td className="p-2 border-b">{d.dose_number}</td>
-                      <td className="p-2 border-b">{d.vaccine_item_id ? items[d.vaccine_item_id]?.name ?? "—" : "—"}</td>
-                      <td className="p-2 border-b">{d.administered_at ? new Date(d.administered_at).toLocaleString() : "—"}</td>
+              <div className="mt-4">
+                <table className="w-full border text-sm">
+                  <thead className="bg-neutral-50">
+                    <tr>
+                      <th className="text-left p-2 border-b">Dose #</th>
+                      <th className="text-left p-2 border-b">Vaccine</th>
+                      <th className="text-left p-2 border-b">Administered At</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {sortedDoses.map((d) => (
+                      <tr key={d.id}>
+                        <td className="p-2 border-b">{d.dose_number}</td>
+                        <td className="p-2 border-b">{d.vaccine_item_id ? items[d.vaccine_item_id]?.name ?? "—" : "—"}</td>
+                        <td className="p-2 border-b">{d.administered_at ? new Date(d.administered_at).toLocaleString() : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => downloadCard(groupKey)}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-neutral-50"
+                disabled={downloadingKey === groupKey}
+              >
+                {downloadingKey === groupKey ? "Preparing…" : "Download PNG"}
+              </button>
             </div>
           </div>
         );

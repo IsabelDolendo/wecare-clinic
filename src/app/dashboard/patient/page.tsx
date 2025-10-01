@@ -12,16 +12,22 @@ export default async function PatientHome() {
   if (user) {
     const { data: prof } = await supabase
       .from("profiles")
-      .select("full_name")
+      .select("full_name, role")
       .eq("id", user.id)
       .maybeSingle();
-    fullName = (prof?.full_name && String(prof.full_name)) || "User";
+
+    if (prof?.role === "patient" && prof.full_name) {
+      const name = String(prof.full_name).trim();
+      if (name.length > 0) {
+        fullName = name;
+      }
+    }
   }
 
   return (
     <div className="space-y-6">
       <section className="card p-5 space-y-3">
-        <h2 className="text-xl font-semibold">Hi &quot;{fullName}&quot;! Welcome to WeCare Clinic Web App!</h2>
+        <h2 className="text-xl font-semibold">Hi {fullName}! Welcome to WeCare Clinic Web App!</h2>
         <p className="text-sm text-neutral-700">
           Nakagat ka ba ng aso, pusa o ano mang hayop? Mag book na ng Appointment. Click &quot;Book an Appointment&quot; below to send an appointment.
         </p>
