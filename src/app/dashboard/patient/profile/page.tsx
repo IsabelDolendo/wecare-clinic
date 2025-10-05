@@ -11,10 +11,7 @@ export default function PatientProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -40,7 +37,6 @@ export default function PatientProfilePage() {
         .single();
       if (!active) return;
       setFullName(prof?.full_name ?? "");
-      setPhone(prof?.phone ?? "");
       setAvatarUrl(prof?.avatar_url ?? null);
       setLoading(false);
     })();
@@ -58,30 +54,6 @@ export default function PatientProfilePage() {
     setError(null); setOk(null);
     const { error } = await supabase.auth.updateUser({ email });
     if (error) setError(error.message); else setOk("Verification email sent. Please check your inbox.");
-  }
-
-  async function sendOtp() {
-    setError(null); setOk(null);
-    const res = await fetch("/api/otp/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) });
-    if (!res.ok) {
-      const j = await res.json();
-      setError(j.error || "Failed to send OTP");
-    } else {
-      setOtpSent(true);
-      setOk("OTP sent via SMS");
-    }
-  }
-
-  async function verifyOtp() {
-    setError(null); setOk(null);
-    const res = await fetch("/api/otp/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, code: otp }) });
-    const j = await res.json();
-    if (!res.ok) {
-      setError(j.error || "Invalid code");
-    } else {
-      setOk("Phone number verified and saved");
-      setOtp("");
-    }
   }
 
   async function handleAvatarUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -174,22 +146,6 @@ export default function PatientProfilePage() {
         <p className="text-xs text-neutral-600 mt-1">Changing email will send a verification email via Supabase.</p>
       </section>
 
-      <section className="card p-4">
-        <h3 className="font-semibold mb-2">Phone Number</h3>
-        <div className="flex flex-col gap-2">
-          <div className="flex gap-2 items-center">
-            <input className="flex-1 rounded-md border px-3 py-2" value={phone} onChange={(e)=>setPhone(e.target.value)} placeholder="e.g. +639XXXXXXXXX" />
-            <button className="rounded-md border px-4 py-2" onClick={sendOtp}>Send OTP</button>
-          </div>
-          {otpSent && (
-            <div className="flex gap-2 items-center">
-              <input className="flex-1 rounded-md border px-3 py-2" value={otp} onChange={(e)=>setOtp(e.target.value)} placeholder="Enter OTP code" />
-              <button className="btn-primary rounded-md px-4 py-2" onClick={verifyOtp}>Verify</button>
-            </div>
-          )}
-          <p className="text-xs text-neutral-600">We will send an SMS OTP to verify your phone number.</p>
-        </div>
-      </section>
     </div>
   );
 }

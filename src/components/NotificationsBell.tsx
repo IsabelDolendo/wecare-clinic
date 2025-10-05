@@ -19,6 +19,7 @@ export default function NotificationsBell() {
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
+  const userRoleRef = useRef<string | null>(null);
   const openRef = useRef(false);
 
   const ensureUserId = async () => {
@@ -27,6 +28,12 @@ export default function NotificationsBell() {
     const user = auth.user;
     if (!user) return null;
     userIdRef.current = user.id;
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    userRoleRef.current = profile?.role ?? null;
     return user.id;
   };
 
@@ -160,10 +167,11 @@ export default function NotificationsBell() {
       null;
 
     if (note.type === "message") {
+      const isPatientRecipient = userRoleRef.current === "patient";
       const fullName = extractText(note.payload, "full_name") ?? "a patient";
       return {
         title: baseTitle ?? "New message",
-        body: baseBody ?? `You have a new message from ${fullName}.`,
+        body: baseBody ?? (isPatientRecipient ? "You have a new message from WeCare Admin!" : `You have a new message from ${fullName}.`),
       };
     }
 
@@ -183,6 +191,38 @@ export default function NotificationsBell() {
           `Appointment status updated to ${status}${fullName ? ` for ${fullName}` : ""}.`;
         return { title: subject, body };
       }
+    }
+
+    if (note.type === "vaccination_update") {
+      const doseNumber = note.payload?.dose_number;
+      const defaultTitle = baseTitle ?? "Vaccination Update";
+      const defaultBody = baseBody ?? "Your vaccination progress has been updated.";
+
+      if (typeof doseNumber === "number") {
+        if (doseNumber === 1) {
+          return {
+            title: defaultTitle,
+            body: baseBody ?? "Thank you for trusting us! Your 1st Vaccination is done!",
+          };
+        }
+        if (doseNumber === 2) {
+          return {
+            title: defaultTitle,
+            body: baseBody ?? "Thank you for trusting us! Your 2nd Vaccination is done!",
+          };
+        }
+        if (doseNumber >= 3) {
+          return {
+            title: defaultTitle,
+            body: baseBody ?? "Thank you for trusting us! Your Vaccination Progress is now completed!",
+          };
+        }
+      }
+
+      return {
+        title: defaultTitle,
+        body: defaultBody,
+      };
     }
 
     return {

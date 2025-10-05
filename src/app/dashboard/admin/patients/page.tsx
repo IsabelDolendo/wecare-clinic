@@ -255,6 +255,24 @@ export default function AdminPatientsPage() {
         administered_at: new Date().toISOString(),
       });
       if (insertErr) throw insertErr;
+
+      const messageMap: Record<number, string> = {
+        1: "Thank you for trusting us! Your 1st Vaccination is done!",
+        2: "Thank you for trusting us! Your 2nd Vaccination is done!",
+        3: "Thank you for trusting us! Your Vaccination Progress is now completed!",
+      };
+      const notificationBody = messageMap[nextDose] ?? "Your vaccination progress has been updated.";
+
+      await supabase.from("notifications").insert({
+        user_id: vaccPatient.userId,
+        type: "vaccination_update",
+        payload: {
+          title: "Vaccination Update",
+          body: notificationBody,
+          dose_number: nextDose,
+        },
+      });
+
       closeVacc();
       await load();
     } catch (e) {
