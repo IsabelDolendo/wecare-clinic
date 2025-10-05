@@ -167,8 +167,8 @@ export default function AdminMessagesPage() {
   }
 
   return (
-    <div className="grid md:grid-cols-[260px_1fr] gap-4 h-[calc(100vh-7rem)] max-h-[calc(100vh-7rem)]">
-      <div className="card p-3 overflow-auto">
+    <div className="grid md:grid-cols-[260px_1fr] gap-4 h-[calc(100vh-7rem)] max-h-[calc(100vh-7rem)] overflow-hidden md:overflow-visible">
+      <div className="card p-3 overflow-auto min-h-0">
         {loading && <p className="text-sm text-neutral-600">Loading…</p>}
         {contacts.length === 0 && !loading && (
           <p className="text-sm text-neutral-600">No conversations yet.</p>
@@ -206,10 +206,10 @@ export default function AdminMessagesPage() {
       </ul>
     </div>
 
-    <div className="flex flex-col">
+    <div className="flex flex-col min-h-0">
       <h2 className="text-xl font-semibold mb-3">Messages</h2>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <div className="flex-1 overflow-auto card p-3">
+        <div className="flex-1 overflow-y-auto card p-3 min-h-0">
           {msgs.map((m) => {
           const isMe = m.sender_user_id === me;
           const senderProfile = profileCache[m.sender_user_id];
@@ -242,6 +242,7 @@ export default function AdminMessagesPage() {
             className="flex-1 rounded-md border px-3 py-2"
             placeholder={activeContact ? `Message ${activeContact.full_name || activeContact.id.substring(0,6)}` : 'Select a conversation'}
             value={input}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && send()}
             disabled={!activeId}
           />

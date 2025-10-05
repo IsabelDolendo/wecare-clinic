@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 
 type NotificationRow = {
   id: string;
+  type: string;
   payload: Record<string, unknown> | null;
   created_at: string | null;
   read_at: string | null;
@@ -43,7 +44,7 @@ export default function NotificationsBell() {
     setListError(null);
     const { data, error } = await supabase
       .from("notifications")
-      .select("id, payload, created_at, read_at")
+      .select("id, type, payload, created_at, read_at")
       .eq("user_id", uid)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -147,6 +148,49 @@ export default function NotificationsBell() {
     return typeof value === "string" ? value : null;
   };
 
+  const deriveNotificationContent = (note: NotificationRow) => {
+    const baseTitle =
+      extractText(note.payload, "title") ??
+      extractText(note.payload, "subject") ??
+      null;
+    const baseBody =
+      extractText(note.payload, "body") ??
+      extractText(note.payload, "message") ??
+      extractText(note.payload, "description") ??
+      null;
+
+    if (note.type === "message") {
+      const fullName = extractText(note.payload, "full_name") ?? "a patient";
+      return {
+        title: baseTitle ?? "New message",
+        body: baseBody ?? `You have a new message from ${fullName}.`,
+      };
+    }
+
+    if (note.type === "appointment_update") {
+      const status = extractText(note.payload, "status");
+      const fullName = extractText(note.payload, "full_name");
+      if (status === "submitted") {
+        return {
+          title: baseTitle ?? "New appointment booking",
+          body: baseBody ?? `You have a new booking of an appointment from ${fullName ?? "a patient"}.`,
+        };
+      }
+      if (status) {
+        const subject = baseTitle ?? "Appointment update";
+        const body =
+          baseBody ??
+          `Appointment status updated to ${status}${fullName ? ` for ${fullName}` : ""}.`;
+        return { title: subject, body };
+      }
+    }
+
+    return {
+      title: baseTitle ?? "Notification",
+      body: baseBody ?? "You have a notification.",
+    };
+  };
+
   const formatTime = (value: string | null) => (value ? new Date(value).toLocaleString() : "—");
 
   return (
@@ -188,13 +232,7 @@ export default function NotificationsBell() {
                 ) : (
                   <ul className="space-y-3">
                     {notifications.map((note) => {
-                      const title =
-                        extractText(note.payload, "title") ?? extractText(note.payload, "subject") ?? "Notification";
-                      const body =
-                        extractText(note.payload, "body") ??
-                        extractText(note.payload, "message") ??
-                        extractText(note.payload, "description") ??
-                        "No details provided.";
+                      const { title, body } = deriveNotificationContent(note);
                       return (
                         <li key={note.id} className="rounded-md border px-3 py-2">
                           <div className="flex items-start justify-between gap-2">

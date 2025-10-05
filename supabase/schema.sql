@@ -232,9 +232,24 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  sender_name text;
 begin
+  select full_name into sender_name from public.profiles where id = new.sender_user_id;
+  if sender_name is null or sender_name = '' then
+    sender_name := 'a patient';
+  end if;
+
   insert into public.notifications (user_id, type, payload)
-  values (new.recipient_user_id, 'message', jsonb_build_object('message_id', new.id, 'from', new.sender_user_id));
+  values (
+    new.recipient_user_id,
+    'message',
+    jsonb_build_object(
+      'message_id', new.id,
+      'from', new.sender_user_id,
+      'full_name', sender_name
+    )
+  );
   return new;
 end;
 $$;

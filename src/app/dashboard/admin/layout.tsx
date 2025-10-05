@@ -3,7 +3,18 @@ import Link from "next/link";
 import LogoutButton from "@/components/LogoutButton";
 import NotificationsBell from "@/components/NotificationsBell";
 import { useEffect, useMemo, useState } from "react";
-import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Menu,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  LayoutDashboard,
+  CalendarCheck,
+  Package,
+  Users,
+  MessageSquare,
+  UserCog,
+} from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
@@ -19,11 +30,12 @@ export default function AdminLayout({
 
   const navItems = useMemo(
     () => [
-      { href: "/dashboard/admin", label: "Main Dashboard" },
-      { href: "/dashboard/admin/inventory", label: "Inventory" },
-      { href: "/dashboard/admin/patients", label: "Patients" },
-      { href: "/dashboard/admin/messages", label: "Messages" },
-      { href: "/dashboard/admin/profile", label: "Profile" },
+      { href: "/dashboard/admin", label: "Main Dashboard", icon: LayoutDashboard },
+      { href: "/dashboard/admin/appointments", label: "Appointment Management", icon: CalendarCheck },
+      { href: "/dashboard/admin/inventory", label: "Inventory Management", icon: Package },
+      { href: "/dashboard/admin/patients", label: "Patients List and Management", icon: Users },
+      { href: "/dashboard/admin/messages", label: "Messages", icon: MessageSquare },
+      { href: "/dashboard/admin/profile", label: "Admin Profile Management", icon: UserCog },
     ],
     []
   );
@@ -84,11 +96,19 @@ export default function AdminLayout({
       <aside className="hidden md:flex bg-red-600 text-white p-4 flex-col gap-3 md:sticky md:top-0 md:h-screen">
         <div className="text-lg font-semibold mb-2">{collapsed ? "WA" : "WeCare Admin"}</div>
         <nav className="flex-1 space-y-1">
-          {navItems.map((item) => (
-            <Link key={item.href} href={item.href} className={desktopLinkClass(item.href)}>
-              <span className={collapsed ? "hidden" : "inline"}>{item.label}</span>
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`${desktopLinkClass(item.href)} flex items-center gap-2 ${collapsed ? "justify-center" : ""}`}
+              >
+                <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+            );
+          })}
         </nav>
         <div className="mt-auto flex items-center justify-between">
           <button
@@ -119,16 +139,20 @@ export default function AdminLayout({
               </button>
             </div>
             <nav className="flex-1 space-y-1">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={mobileLinkClass(item.href)}
-                  onClick={() => setDrawerOpen(false)}
-                >
-                  {item.label}
-                </Link>
-              ))}
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`${mobileLinkClass(item.href)} flex items-center gap-2`}
+                    onClick={() => setDrawerOpen(false)}
+                  >
+                    <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
             </nav>
             <LogoutButton />
           </aside>

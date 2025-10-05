@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 type Appt = {
@@ -19,6 +19,10 @@ type Appt = {
 
 type Item = { id: string; name: string; stock: number };
 
+type StatusFilter = "all" | "submitted_pending" | Appt["status"];
+
+const PAGE_SIZE = 10;
+
 export default function AdminAppointmentsPage() {
   const [rows, setRows] = useState<Appt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +39,13 @@ export default function AdminAppointmentsPage() {
   const [settleAppt, setSettleAppt] = useState<Appt | null>(null);
   const [settleItemId, setSettleItemId] = useState<string | null>(null);
   const [settleProcessing, setSettleProcessing] = useState(false);
+  // Filters and pagination
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("submitted_pending");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   async function openDetails(appt: Appt) {
     setViewing(appt);
@@ -74,18 +85,84 @@ export default function AdminAppointmentsPage() {
       ? "bg-red-100 text-red-700"
       : "bg-neutral-200 text-neutral-800";
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    const { data, error } = await supabase
-      .from("appointments")
-      .select("id,user_id,full_name,contact_number,status,created_at,date_of_bite,bite_address,category,animal,animal_other")
-      .in("status", ["submitted", "pending"]) // only pending work
-      .order("created_at", { ascending: false });
-    if (error) setError(error.message);
-    setRows((data ?? []) as Appt[]);
-    setLoading(false);
-  }
+  const fetchAppointments = useCallback(
+    async (pageParam: number, searchParam: string, statusParam: StatusFilter) => {
+      setLoading(true);
+      setError(null);
+
+      let query = supabase
+        .from("appointments")
+        .select(
+          "id,user_id,full_name,contact_number,status,created_at,date_of_bite,bite_address,category,animal,animal_other",
+          { count: "exact" }
+        );
+
+      if (statusParam === "submitted_pending") {
+        query = query.in("status", ["submitted", "pending"]);
+      } else if (statusParam !== "all") {
+        query = query.eq("status", statusParam);
+      }
+
+      if (searchParam) {
+        query = query.ilike("full_name", `%${searchParam}%`);
+      }
+
+      const from = (pageParam - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data, error, count } = await query
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (error) {
+        setError(error.message);
+        setRows([]);
+        setTotal(0);
+        setTotalPages(1);
+        setLoading(false);
+        return;
+      }
+
+      const countValue = count ?? 0;
+      const nextTotalPages = countValue === 0 ? 1 : Math.ceil(countValue / PAGE_SIZE);
+
+      if (pageParam > nextTotalPages && countValue > 0) {
+        setTotal(countValue);
+        setTotalPages(nextTotalPages);
+        setLoading(false);
+        setPage(nextTotalPages);
+        return;
+      }
+
+      setRows((data ?? []) as Appt[]);
+      setTotal(countValue);
+      setTotalPages(nextTotalPages);
+      setLoading(false);
+    },
+    []
+  );
+
+  const load = useCallback(
+    async (overrides?: Partial<{ page: number; search: string; status: StatusFilter }>) => {
+      const pageParam = overrides?.page ?? page;
+      const searchParam = overrides?.search ?? searchTerm;
+      const statusParam = overrides?.status ?? statusFilter;
+      await fetchAppointments(pageParam, searchParam, statusParam);
+    },
+    [fetchAppointments, page, searchTerm, statusFilter]
+  );
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setSearchTerm(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function loadItems() {
     const { data } = await supabase
@@ -98,7 +175,6 @@ export default function AdminAppointmentsPage() {
   }
 
   useEffect(() => {
-    load();
     loadItems();
   }, []);
 
@@ -110,6 +186,18 @@ export default function AdminAppointmentsPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [viewing]);
+
+  const statusOptions = useMemo(
+    () => [
+      { value: "submitted_pending", label: "Submitted & Pending" },
+      { value: "submitted", label: "Submitted" },
+      { value: "pending", label: "Pending" },
+      { value: "settled", label: "Settled" },
+      { value: "cancelled", label: "Cancelled" },
+      { value: "all", label: "All Statuses" },
+    ],
+    []
+  );
 
   function openSms(appt: Appt) {
     setSmsAppt(appt);
@@ -194,14 +282,45 @@ export default function AdminAppointmentsPage() {
   }
 
   const empty = useMemo(() => !loading && rows.length === 0, [loading, rows]);
+  const showingStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const showingEnd = total === 0 ? 0 : Math.min(total, showingStart + rows.length - 1);
 
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">Appointments</h2>
       {loading && <p className="text-sm text-neutral-600">Loading...</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {empty && <p className="text-sm text-neutral-600">No appointments to process.</p>}
-      {!empty && (
+      <div className="flex flex-col md:flex-row md:items-end gap-3">
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-sm font-medium mb-1">Search by Patient Name</label>
+          <input
+            className="w-full rounded-md border px-3 py-2"
+            placeholder="Search appointments..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+        </div>
+        <div className="w-full md:w-64">
+          <label className="block text-sm font-medium mb-1">Filter by Status</label>
+          <select
+            className="w-full rounded-md border px-3 py-2"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as StatusFilter);
+              setPage(1);
+            }}
+          >
+            {statusOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {empty ? (
+        <p className="text-sm text-neutral-600">No appointments match the current search or filters.</p>
+      ) : (
         <div className="overflow-auto">
           <table className="min-w-full border text-sm">
             <thead className="bg-neutral-50">
@@ -225,14 +344,50 @@ export default function AdminAppointmentsPage() {
                     </td>
                     <td className="p-2 border-b space-x-2">
                       <button className="rounded-md border px-3 py-1" onClick={() => openDetails(r)}>View Details</button>
-                      <button className="rounded-md border px-3 py-1" onClick={() => openSms(r)}>Send SMS</button>
-                      <button className="rounded-md border px-3 py-1" onClick={() => openSettle(r)}>Mark as Settled</button>
+                      <button
+                        className="rounded-md border px-3 py-1 disabled:opacity-50 disabled:pointer-events-none"
+                        onClick={() => openSms(r)}
+                        disabled={!(r.status === "submitted" || r.status === "pending")}
+                      >
+                        Send SMS
+                      </button>
+                      <button
+                        className="rounded-md border px-3 py-1 disabled:opacity-50 disabled:pointer-events-none"
+                        onClick={() => openSettle(r)}
+                        disabled={r.status !== "pending" && r.status !== "submitted"}
+                      >
+                        Mark as Settled
+                      </button>
                     </td>
                   </tr>
                 </Fragment>
               ))}
             </tbody>
           </table>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm mt-3">
+            <div>
+              {total === 0 ? "Showing 0 of 0" : `Showing ${showingStart}-${showingEnd} of ${total}`}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border px-3 py-1 disabled:opacity-50 disabled:pointer-events-none"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                Previous
+              </button>
+              <span>
+                Page {total === 0 ? 0 : page} of {total === 0 ? 0 : totalPages}
+              </span>
+              <button
+                className="rounded-md border px-3 py-1 disabled:opacity-50 disabled:pointer-events-none"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page >= totalPages || total === 0}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {viewing && (
