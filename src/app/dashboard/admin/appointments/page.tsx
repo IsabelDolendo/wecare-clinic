@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {  useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 type Appt = {
@@ -21,6 +21,8 @@ type Item = { id: string; name: string; stock: number };
 
 type StatusFilter = "all" | "submitted_pending" | Appt["status"];
 
+const SMS_MAX_LENGTH = 320;
+
 const PAGE_SIZE = 10;
 
 export default function AdminAppointmentsPage() {
@@ -30,9 +32,13 @@ export default function AdminAppointmentsPage() {
   const [viewing, setViewing] = useState<Appt | null>(null);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailsVisible, setDetailsVisible] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
+  const [stats, setStats] = useState({ total: 0, submitted: 0, pending: 0, settled: 0, cancelled: 0 });
+  const [history, setHistory] = useState<Appt[]>([]);
   // SMS overlay state
   const [smsAppt, setSmsAppt] = useState<Appt | null>(null);
+  const [smsVisible, setSmsVisible] = useState(false);
   const [smsMessage, setSmsMessage] = useState("");
   const [smsSending, setSmsSending] = useState(false);
   // Settle overlay state
@@ -47,7 +53,15 @@ export default function AdminAppointmentsPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
+  const detailCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const smsCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   async function openDetails(appt: Appt) {
+    if (detailCloseTimeoutRef.current) {
+      clearTimeout(detailCloseTimeoutRef.current);
+      detailCloseTimeoutRef.current = null;
+    }
+    setDetailsVisible(false);
     setViewing(appt);
     setDetail(null);
     setDetailLoading(true);
@@ -66,13 +80,87 @@ export default function AdminAppointmentsPage() {
   }
 
   function closeDetails() {
-    setViewing(null);
-    setDetail(null);
-    setDetailLoading(false);
+    setDetailsVisible(false);
+    if (detailCloseTimeoutRef.current) {
+      clearTimeout(detailCloseTimeoutRef.current);
+    }
+    detailCloseTimeoutRef.current = setTimeout(() => {
+      setViewing(null);
+      setDetail(null);
+      setDetailLoading(false);
+      detailCloseTimeoutRef.current = null;
+    }, 200);
   }
 
   const format = (v: unknown) =>
     v === null || v === undefined || v === "" ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v);
+
+  const statusLabels: Record<Appt["status"], string> = {
+    submitted: "Submitted",
+    pending: "Pending",
+    settled: "Settled",
+    cancelled: "Cancelled",
+  };
+
+  const categoryLabel = (category: Appt["category"]) => (category ? `Category ${category}` : "—");
+
+  const animalLabel = (animal: Appt["animal"], other: string | null) => {
+    if (!animal) return "—";
+    if (animal === "other") {
+      return other ? `Other (${other})` : "Other";
+    }
+    const labels: Record<Exclude<Appt["animal"], null>, string> = {
+      dog: "Dog",
+      cat: "Cat",
+      venomous_snake: "Venomous Snake",
+      other: "Other",
+    };
+    return labels[animal];
+  };
+
+  const formatDateTime = (value: string | null) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? format(value) : date.toLocaleString();
+  };
+
+  const formatDate = (value: string | null) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? format(value) : date.toLocaleDateString();
+  };
+
+  const detailLabelMap: Record<string, string> = {
+    id: "Appointment ID",
+    user_id: "Patient User ID",
+    full_name: "Patient Name",
+    contact_number: "Contact Number",
+    created_at: "Submitted On",
+    updated_at: "Last Updated",
+    date_of_bite: "Date of Incident",
+    bite_address: "Incident Location",
+    category: "Exposure Category",
+    animal: "Animal Involved",
+    animal_other: "Additional Animal Details",
+    status: "Current Status",
+    settled_at: "Settled At",
+    notes: "Notes",
+  };
+
+  const friendlyLabel = (key: string) => {
+    if (detailLabelMap[key]) {
+      return detailLabelMap[key];
+    }
+    const withSpaces = key.replace(/_/g, " ");
+    return withSpaces.replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const InfoStat = ({ label, value }: { label: string; value: ReactNode }) => (
+    <div className="flex flex-col gap-1 rounded-md border border-neutral-200 bg-neutral-50/60 p-3">
+      <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</span>
+      <span className="text-sm text-neutral-900">{value}</span>
+    </div>
+  );
 
   const statusClass = (s: Appt["status"]) =>
     s === "settled"
@@ -152,6 +240,49 @@ export default function AdminAppointmentsPage() {
     [fetchAppointments, page, searchTerm, statusFilter]
   );
 
+  const loadStats = useCallback(async () => {
+    const [totalRes, submittedRes, pendingRes, settledRes, cancelledRes] = await Promise.all([
+      supabase.from("appointments").select("id", { count: "exact", head: true }),
+      supabase.from("appointments").select("id", { count: "exact", head: true }).eq("status", "submitted"),
+      supabase.from("appointments").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      supabase.from("appointments").select("id", { count: "exact", head: true }).eq("status", "settled"),
+      supabase.from("appointments").select("id", { count: "exact", head: true }).eq("status", "cancelled"),
+    ]);
+
+    const err = totalRes.error || submittedRes.error || pendingRes.error || settledRes.error || cancelledRes.error;
+    if (err) {
+      setError((prev) => prev ?? err.message);
+      return;
+    }
+
+    setStats({
+      total: totalRes.count ?? 0,
+      submitted: submittedRes.count ?? 0,
+      pending: pendingRes.count ?? 0,
+      settled: settledRes.count ?? 0,
+      cancelled: cancelledRes.count ?? 0,
+    });
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    const { data, error: historyError } = await supabase
+      .from("appointments")
+      .select(
+        "id,user_id,full_name,contact_number,status,created_at,date_of_bite,bite_address,category,animal,animal_other"
+      )
+      .in("status", ["settled", "cancelled"])
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (historyError) {
+      setError((prev) => prev ?? historyError.message);
+      setHistory([]);
+      return;
+    }
+
+    setHistory((data ?? []) as Appt[]);
+  }, []);
+
   useEffect(() => {
     const handle = setTimeout(() => {
       setSearchTerm(searchInput.trim());
@@ -163,6 +294,11 @@ export default function AdminAppointmentsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    loadStats();
+    loadHistory();
+  }, [loadHistory, loadStats]);
 
   async function loadItems() {
     const { data } = await supabase
@@ -187,6 +323,29 @@ export default function AdminAppointmentsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [viewing]);
 
+  useEffect(() => {
+    if (!viewing) return;
+    const frame = requestAnimationFrame(() => setDetailsVisible(true));
+    return () => cancelAnimationFrame(frame);
+  }, [viewing]);
+
+  useEffect(() => {
+    if (!smsAppt) return;
+    const frame = requestAnimationFrame(() => setSmsVisible(true));
+    return () => cancelAnimationFrame(frame);
+  }, [smsAppt]);
+
+  useEffect(() => {
+    return () => {
+      if (detailCloseTimeoutRef.current) {
+        clearTimeout(detailCloseTimeoutRef.current);
+      }
+      if (smsCloseTimeoutRef.current) {
+        clearTimeout(smsCloseTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const statusOptions = useMemo(
     () => [
       { value: "submitted_pending", label: "Submitted & Pending" },
@@ -200,15 +359,27 @@ export default function AdminAppointmentsPage() {
   );
 
   function openSms(appt: Appt) {
+    if (smsCloseTimeoutRef.current) {
+      clearTimeout(smsCloseTimeoutRef.current);
+      smsCloseTimeoutRef.current = null;
+    }
+    setSmsVisible(false);
     setSmsAppt(appt);
     setSmsMessage(`Hello ${appt.full_name}, this is WeCare Clinic regarding your appointment.`);
     setSmsSending(false);
   }
 
   function closeSms() {
-    setSmsAppt(null);
-    setSmsMessage("");
-    setSmsSending(false);
+    setSmsVisible(false);
+    if (smsCloseTimeoutRef.current) {
+      clearTimeout(smsCloseTimeoutRef.current);
+    }
+    smsCloseTimeoutRef.current = setTimeout(() => {
+      setSmsAppt(null);
+      setSmsMessage("");
+      setSmsSending(false);
+      smsCloseTimeoutRef.current = null;
+    }, 200);
   }
 
   async function submitSms() {
@@ -223,6 +394,8 @@ export default function AdminAppointmentsPage() {
       if (!res.ok) throw new Error(await res.text());
       await supabase.from("appointments").update({ status: "pending" }).eq("id", smsAppt.id);
       await load();
+      await loadStats();
+      await loadHistory();
       closeSms();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -273,6 +446,8 @@ export default function AdminAppointmentsPage() {
       if (aErr) throw aErr;
       await load();
       await loadItems();
+      await loadStats();
+      await loadHistory();
       closeSettle();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -285,116 +460,237 @@ export default function AdminAppointmentsPage() {
   const showingStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const showingEnd = total === 0 ? 0 : Math.min(total, showingStart + rows.length - 1);
 
+  const metrics = useMemo(
+    () => [
+      {
+        key: "total",
+        label: "Total Appointments",
+        value: stats.total,
+        description: "All appointment records",
+        cardClass: "border-blue-200 bg-blue-50/80",
+        labelClass: "text-blue-700/80",
+        valueClass: "text-blue-900",
+      },
+      {
+        key: "submitted",
+        label: "Submitted",
+        value: stats.submitted,
+        description: "Awaiting review",
+        cardClass: "border-neutral-300 bg-neutral-100/80",
+        labelClass: "text-neutral-700",
+        valueClass: "text-neutral-900",
+      },
+      {
+        key: "pending",
+        label: "Pending",
+        value: stats.pending,
+        description: "In progress",
+        cardClass: "border-amber-200 bg-amber-50/80",
+        labelClass: "text-amber-700/80",
+        valueClass: "text-amber-900",
+      },
+      {
+        key: "settled",
+        label: "Settled",
+        value: stats.settled,
+        description: "Completed vaccinations",
+        cardClass: "border-green-200 bg-green-50/80",
+        labelClass: "text-green-700/80",
+        valueClass: "text-green-900",
+      },
+      {
+        key: "cancelled",
+        label: "Cancelled",
+        value: stats.cancelled,
+        description: "No longer active",
+        cardClass: "border-rose-200 bg-rose-50/80",
+        labelClass: "text-rose-700/80",
+        valueClass: "text-rose-900",
+      },
+    ],
+    [stats]
+  );
+
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Appointments</h2>
-      {loading && <p className="text-sm text-neutral-600">Loading...</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <div className="flex flex-col md:flex-row md:items-end gap-3">
-        <div className="flex-1 min-w-[200px]">
-          <label className="block text-sm font-medium mb-1">Search by Patient Name</label>
-          <input
-            className="w-full rounded-md border px-3 py-2"
-            placeholder="Search appointments..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
+    <div className="space-y-6">
+      <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold text-neutral-900">Appointment Management</h2>
+          <p className="text-sm text-neutral-600">Search, track, and settle patient appointments with an at-a-glance summary.</p>
         </div>
-        <div className="w-full md:w-64">
-          <label className="block text-sm font-medium mb-1">Filter by Status</label>
-          <select
-            className="w-full rounded-md border px-3 py-2"
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value as StatusFilter);
-              setPage(1);
-            }}
+        {loading && <span className="text-sm text-neutral-500">Syncing latest records…</span>}
+      </header>
+
+      {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {metrics.map((metric) => (
+          <article
+            key={metric.key}
+            className={`rounded-lg border ${metric.cardClass} p-4 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-md`}
           >
-            {statusOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      {empty ? (
-        <p className="text-sm text-neutral-600">No appointments match the current search or filters.</p>
-      ) : (
-        <div className="overflow-auto">
-          <table className="min-w-full border text-sm">
-            <thead className="bg-neutral-50">
-              <tr>
-                <th className="text-left p-2 border-b">Created</th>
-                <th className="text-left p-2 border-b">Full Name</th>
-                <th className="text-left p-2 border-b">Contact</th>
-                <th className="text-left p-2 border-b">Status</th>
-                <th className="text-left p-2 border-b">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <Fragment key={r.id}>
-                  <tr className="hover:bg-neutral-50">
-                    <td className="p-2 border-b">{new Date(r.created_at).toLocaleString()}</td>
-                    <td className="p-2 border-b">{r.full_name}</td>
-                    <td className="p-2 border-b">{r.contact_number}</td>
-                    <td className="p-2 border-b">
-                      <span className={`px-2 py-0.5 rounded-full text-xs ${statusClass(r.status)}`}>{r.status}</span>
-                    </td>
-                    <td className="p-2 border-b space-x-2">
-                      <button className="rounded-md border px-3 py-1" onClick={() => openDetails(r)}>View Details</button>
-                      <button
-                        className="rounded-md border px-3 py-1 disabled:opacity-50 disabled:pointer-events-none"
-                        onClick={() => openSms(r)}
-                        disabled={!(r.status === "submitted" || r.status === "pending")}
-                      >
-                        Send SMS
-                      </button>
-                      <button
-                        className="rounded-md border px-3 py-1 disabled:opacity-50 disabled:pointer-events-none"
-                        onClick={() => openSettle(r)}
-                        disabled={r.status !== "pending" && r.status !== "submitted"}
-                      >
-                        Mark as Settled
-                      </button>
-                    </td>
-                  </tr>
-                </Fragment>
+            <p className={`text-xs uppercase tracking-wide ${metric.labelClass}`}>{metric.label}</p>
+            <p className={`mt-2 text-2xl font-semibold ${metric.valueClass}`}>{loading ? "…" : metric.value}</p>
+            <p className="text-xs text-neutral-600">{metric.description}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="space-y-4 rounded-lg border border-neutral-200 bg-white/90 p-5 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg">
+        <div className="grid gap-3 md:grid-cols-[minmax(200px,1fr)_240px]">
+          <label className="text-sm font-medium text-neutral-700">
+            Search by patient name
+            <input
+              className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
+              placeholder="Search appointments…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Filter by status
+            <select
+              className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as StatusFilter);
+                setPage(1);
+              }}
+            >
+              {statusOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
-            </tbody>
-          </table>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm mt-3">
-            <div>
-              {total === 0 ? "Showing 0 of 0" : `Showing ${showingStart}-${showingEnd} of ${total}`}
+            </select>
+          </label>
+        </div>
+
+        {empty ? (
+          <p className="text-sm text-neutral-600">No appointments match the current search or filters.</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="overflow-hidden rounded-lg border border-neutral-200">
+              <table className="min-w-full divide-y divide-neutral-200 text-sm">
+                <thead className="bg-neutral-50">
+                  <tr>
+                    <th className="p-3 text-left font-medium text-neutral-600">Created</th>
+                    <th className="p-3 text-left font-medium text-neutral-600">Patient</th>
+                    <th className="p-3 text-left font-medium text-neutral-600">Contact</th>
+                    <th className="p-3 text-left font-medium text-neutral-600">Status</th>
+                    <th className="p-3 text-left font-medium text-neutral-600">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-200">
+                  {rows.map((r) => (
+                    <tr key={r.id} className="bg-white transition hover:bg-neutral-50">
+                      <td className="p-3 text-neutral-600">{new Date(r.created_at).toLocaleString()}</td>
+                      <td className="p-3 font-medium text-neutral-900">{r.full_name}</td>
+                      <td className="p-3 text-neutral-600">{r.contact_number}</td>
+                      <td className="p-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(r.status)}`}>{statusLabels[r.status]}</span>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className="rounded-md bg-[#800000] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[#660000]"
+                            onClick={() => openDetails(r)}
+                          >
+                            View Details
+                          </button>
+                          <button
+                            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none"
+                            onClick={() => openSms(r)}
+                            disabled={!(r.status === "submitted" || r.status === "pending")}
+                          >
+                            Send SMS
+                          </button>
+                          <button
+                            className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50 disabled:pointer-events-none"
+                            onClick={() => openSettle(r)}
+                            disabled={r.status !== "pending" && r.status !== "submitted"}
+                          >
+                            Mark as Settled
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                className="rounded-md border px-3 py-1 disabled:opacity-50 disabled:pointer-events-none"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-              >
-                Previous
-              </button>
-              <span>
-                Page {total === 0 ? 0 : page} of {total === 0 ? 0 : totalPages}
-              </span>
-              <button
-                className="rounded-md border px-3 py-1 disabled:opacity-50 disabled:pointer-events-none"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page >= totalPages || total === 0}
-              >
-                Next
-              </button>
+            <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div>{total === 0 ? "Showing 0 of 0" : `Showing ${showingStart}-${showingEnd} of ${total}`}</div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-md border border-neutral-300 px-3 py-1 transition-colors hover:bg-neutral-100 disabled:opacity-50 disabled:pointer-events-none"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {total === 0 ? 0 : page} of {total === 0 ? 0 : totalPages}
+                </span>
+                <button
+                  className="rounded-md border border-neutral-300 px-3 py-1 transition-colors hover:bg-neutral-100 disabled:opacity-50 disabled:pointer-events-none"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={page >= totalPages || total === 0}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white/90 p-5 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg">
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-neutral-900">Recent Appointment History</h3>
+            <p className="text-sm text-neutral-600">Latest settled or cancelled appointments (last 10).</p>
+          </div>
         </div>
-      )}
+        {history.length === 0 ? (
+          <p className="mt-3 text-sm text-neutral-600">No settled or cancelled appointments recorded yet.</p>
+        ) : (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {history.map((appt) => (
+              <div key={appt.id} className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-neutral-900">{appt.full_name}</p>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(appt.status)}`}>{statusLabels[appt.status]}</span>
+                </div>
+                <p className="mt-1 text-xs text-neutral-500">{new Date(appt.created_at).toLocaleString()}</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-600">
+                  <span className="rounded-md bg-neutral-100 px-2 py-0.5">Contact: {appt.contact_number}</span>
+                  {appt.bite_address && <span className="rounded-md bg-neutral-100 px-2 py-0.5">Location: {appt.bite_address}</span>}
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    className="rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+                    onClick={() => openDetails(appt)}
+                  >
+                    View Details
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {viewing && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={closeDetails} />
-          <div className="relative z-10 mx-auto mt-10 max-w-2xl w-[calc(100%-2rem)]">
-            <div className="bg-white rounded-md shadow-lg p-4 md:p-6 max-h-[80vh] overflow-y-auto">
+          <div
+            className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ease-out ${detailsVisible ? "opacity-100" : "opacity-0"}`}
+            onClick={closeDetails}
+          />
+          <div
+            className={`relative z-10 mx-auto mt-10 w-[calc(100%-2rem)] max-w-2xl transform transition-all duration-200 ease-out ${detailsVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-4 scale-95 opacity-0"}`}
+          >
+            <div className="bg-white rounded-xl shadow-xl ring-1 ring-black/5 p-5 md:p-6 max-h-[80vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold">Appointment Details</h3>
                 <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeDetails}>×</button>
@@ -402,31 +698,42 @@ export default function AdminAppointmentsPage() {
               {detailLoading ? (
                 <p className="text-sm text-neutral-600">Loading...</p>
               ) : (
-                <div className="space-y-4">
-                  <div className="grid md:grid-cols-2 gap-2 text-sm">
-                    <div><span className="text-neutral-500">Created:</span> {format(viewing.created_at)}</div>
-                    <div><span className="text-neutral-500">Full Name:</span> {format(viewing.full_name)}</div>
-                    <div><span className="text-neutral-500">Contact:</span> {format(viewing.contact_number)}</div>
-                    <div><span className="text-neutral-500">Status:</span> <span className={`px-2 py-0.5 rounded-full text-xs ${statusClass(viewing.status)}`}>{format(viewing.status)}</span></div>
-                    <div><span className="text-neutral-500">Date of Bite:</span> {format(viewing.date_of_bite)}</div>
-                    <div><span className="text-neutral-500">Bite Address:</span> {format(viewing.bite_address)}</div>
-                    <div><span className="text-neutral-500">Category:</span> {format(viewing.category)}</div>
-                    <div><span className="text-neutral-500">Animal:</span> {format(viewing.animal === 'other' ? `${viewing.animal} (${viewing.animal_other ?? ''})` : viewing.animal)}</div>
-                  </div>
-                  {detail && (
-                    <div className="text-sm">
-                      <h4 className="font-semibold mb-2">All Submitted Fields</h4>
-                      <div className="grid md:grid-cols-2 gap-2">
-                        {Object.entries(detail).map(([k, v]) => (
-                          <div key={k}><span className="text-neutral-500">{k}:</span> {format(v)}</div>
-                        ))}
-                      </div>
+                <div className="space-y-6 text-sm">
+                  <section className="space-y-3">
+                    <h4 className="text-base font-semibold text-[#800000]">Appointment Overview</h4>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <InfoStat label="Submitted On" value={formatDateTime(viewing.created_at)} />
+                      <InfoStat label="Patient Name" value={format(viewing.full_name)} />
+                      <InfoStat label="Contact Number" value={format(viewing.contact_number)} />
+                      <InfoStat
+                        label="Current Status"
+                        value={<span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(viewing.status)}`}>{statusLabels[viewing.status]}</span>}
+                      />
+                      <InfoStat label="Date of Incident" value={formatDate(viewing.date_of_bite)} />
+                      <InfoStat label="Incident Location" value={format(viewing.bite_address)} />
+                      <InfoStat label="Exposure Category" value={categoryLabel(viewing.category)} />
+                      <InfoStat label="Animal Involved" value={animalLabel(viewing.animal, viewing.animal_other)} />
                     </div>
+                  </section>
+                  {detail && (
+                    <section className="space-y-3">
+                      <h4 className="text-base font-semibold text-[#800000]">Submission Data</h4>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {Object.entries(detail)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([k, v]) => (
+                            <div key={k} className="rounded-md border border-neutral-200 bg-white/80 p-3">
+                              <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{friendlyLabel(k)}</div>
+                              <div className="mt-1 text-sm text-neutral-900 break-words">{format(v)}</div>
+                            </div>
+                          ))}
+                      </div>
+                    </section>
                   )}
                 </div>
               )}
               <div className="mt-4 flex justify-end">
-                <button className="rounded-md border px-4 py-2" onClick={closeDetails}>Back</button>
+                <button className="rounded-md border px-4 py-2 transition-colors hover:bg-neutral-100" onClick={closeDetails}>Back</button>
               </div>
             </div>
           </div>
@@ -435,24 +742,58 @@ export default function AdminAppointmentsPage() {
 
       {smsAppt && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={closeSms} />
-          <div className="relative z-10 mx-auto mt-10 max-w-xl w-[calc(100%-2rem)]">
-            <div className="bg-white rounded-md shadow-lg p-4 md:p-6 max-h-[80vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">Send SMS</h3>
-                <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeSms}>×</button>
-              </div>
-              <div className="space-y-3 text-sm">
-                <div><span className="text-neutral-500">Recipient:</span> {smsAppt.full_name} ({smsAppt.contact_number})</div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Message</label>
-                  <textarea className="w-full rounded-md border px-3 py-2 min-h-32" value={smsMessage} onChange={(e)=>setSmsMessage(e.target.value)} />
+          <div
+            className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ease-out ${smsVisible ? "opacity-100" : "opacity-0"}`}
+            onClick={closeSms}
+          />
+          <div
+            className={`relative z-10 mx-auto mt-10 w-[calc(100%-2rem)] max-w-xl transform transition-all duration-200 ease-out ${smsVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-4 scale-95 opacity-0"}`}
+          >
+            <div className="bg-white rounded-xl shadow-xl ring-1 ring-black/5 p-5 md:p-6 max-h-[80vh] overflow-y-auto">
+              <div className="flex flex-col gap-1 mb-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold">Send SMS Update</h3>
+                    <p className="text-sm text-neutral-500">Reach out directly to keep patients informed.</p>
+                  </div>
+                  <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeSms}>×</button>
+                </div>
+                <div className="rounded-md border border-neutral-200 bg-neutral-50/60 p-3 text-sm">
+                  <div className="font-medium text-neutral-700">{smsAppt.full_name}</div>
+                  <div className="text-neutral-500">{smsAppt.contact_number}</div>
                 </div>
               </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button className="rounded-md border px-4 py-2" onClick={closeSms} disabled={smsSending}>Cancel</button>
-                <button className="btn-primary rounded-md px-4 py-2" onClick={submitSms} disabled={smsSending}>
-                  {smsSending ? "Sending..." : "Send"}
+              <div className="space-y-4 text-sm">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1" htmlFor="sms-message">Message</label>
+                  <textarea
+                    id="sms-message"
+                    className="w-full rounded-md border border-neutral-200 px-3 py-2 min-h-32 resize-none shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/40"
+                    value={smsMessage}
+                    onChange={(e) => setSmsMessage(e.target.value.slice(0, SMS_MAX_LENGTH))}
+                    maxLength={SMS_MAX_LENGTH}
+                    placeholder="Type your message here..."
+                  />
+                  <div className="mt-1 flex items-center justify-between text-xs text-neutral-500">
+                    <span>Let patients know about updates or reminders for their appointment.</span>
+                    <span>{smsMessage.length}/{SMS_MAX_LENGTH} characters</span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  className="rounded-md border px-4 py-2 transition-colors hover:bg-neutral-100"
+                  onClick={closeSms}
+                  disabled={smsSending}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-md bg-blue-600 px-4 py-2 text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400/60 disabled:opacity-60 disabled:pointer-events-none"
+                  onClick={submitSms}
+                  disabled={smsSending || smsMessage.trim().length === 0}
+                >
+                  {smsSending ? "Sending..." : "Send Message"}
                 </button>
               </div>
             </div>
@@ -486,7 +827,11 @@ export default function AdminAppointmentsPage() {
               </div>
               <div className="mt-4 flex justify-end gap-2">
                 <button className="rounded-md border px-4 py-2" onClick={closeSettle} disabled={settleProcessing}>Cancel</button>
-                <button className="btn-primary rounded-md px-4 py-2" onClick={confirmSettle} disabled={settleProcessing || items.length === 0}>
+                <button
+                  className="rounded-md bg-green-600 px-4 py-2 text-white transition-colors hover:bg-green-700 disabled:opacity-60 disabled:pointer-events-none"
+                  onClick={confirmSettle}
+                  disabled={settleProcessing || items.length === 0}
+                >
                   {settleProcessing ? "Processing..." : "Confirm"}
                 </button>
               </div>

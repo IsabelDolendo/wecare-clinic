@@ -43,28 +43,28 @@ export default function PatientLayout({
       className={`min-h-screen md:h-screen md:overflow-hidden grid grid-cols-1 ${collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[240px_1fr]"}`}
     >
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex bg-red-600 text-white p-4 flex-col gap-3 md:sticky md:top-0 md:h-screen">
+      <aside className="hidden md:flex bg-[#800000] text-white p-4 flex-col gap-3 md:sticky md:top-0 md:h-screen">
         <div className="text-lg font-semibold mb-2">{collapsed ? "W" : "WeCare"}</div>
         <nav className="flex-1 space-y-1">
-          <Link href="/dashboard/patient" className="block px-3 py-2 rounded hover:bg-red-500/40">
+          <Link href="/dashboard/patient" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
             <span className={collapsed ? "hidden" : "inline"}>Main Dashboard</span>
           </Link>
-          <Link href="/dashboard/patient/appointments" className="block px-3 py-2 rounded hover:bg-red-500/40">
+          <Link href="/dashboard/patient/appointments" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
             <span className={collapsed ? "hidden" : "inline"}>Appointment Booking</span>
           </Link>
-          <Link href="/dashboard/patient/history" className="block px-3 py-2 rounded hover:bg-red-500/40">
+          <Link href="/dashboard/patient/history" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
             <span className={collapsed ? "hidden" : "inline"}>History of Booking</span>
           </Link>
-          <Link href="/dashboard/patient/e-vaccination-card" className="block px-3 py-2 rounded hover:bg-red-500/40">
+          <Link href="/dashboard/patient/e-vaccination-card" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
             <span className={collapsed ? "hidden" : "inline"}>E-Vaccination Card</span>
           </Link>
-          <Link href="/dashboard/patient/profile" className="block px-3 py-2 rounded hover:bg-red-500/40">
+          <Link href="/dashboard/patient/profile" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
             <span className={collapsed ? "hidden" : "inline"}>Profile Management</span>
           </Link>
-          <Link href="/dashboard/patient/about" className="block px-3 py-2 rounded hover:bg-red-500/40">
+          <Link href="/dashboard/patient/about" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
             <span className={collapsed ? "hidden" : "inline"}>About WeCare Clinic</span>
           </Link>
-          <Link href="/dashboard/patient/messages" className="block px-3 py-2 rounded hover:bg-red-500/40">
+          <Link href="/dashboard/patient/messages" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
             <span className={collapsed ? "hidden" : "inline"}>Messages</span>
           </Link>
         </nav>
@@ -85,7 +85,7 @@ export default function PatientLayout({
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
-          <aside className="relative z-10 bg-red-600 text-white w-64 h-full p-4 flex flex-col gap-3">
+          <aside className="relative z-10 bg-[#800000] text-white w-64 h-full p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between mb-2">
               <div className="text-lg font-semibold">WeCare</div>
               <button
@@ -103,19 +103,19 @@ export default function PatientLayout({
               <Link href="/dashboard/patient/appointments" className="block px-3 py-2 rounded hover:bg-white/10" onClick={() => setDrawerOpen(false)}>
                 Appointment Booking
               </Link>
-              <Link href="/dashboard/patient/history" className="block px-3 py-2 rounded hover:bg-red-500/40" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/patient/history" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
                 History of Booking
               </Link>
-              <Link href="/dashboard/patient/e-vaccination-card" className="block px-3 py-2 rounded hover:bg-red-500/40" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/patient/e-vaccination-card" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
                 E-Vaccination Card
               </Link>
-              <Link href="/dashboard/patient/profile" className="block px-3 py-2 rounded hover:bg-red-500/40" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/patient/profile" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
                 Profile Management
               </Link>
-              <Link href="/dashboard/patient/about" className="block px-3 py-2 rounded hover:bg-red-500/40" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/patient/about" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
                 About WeCare Clinic
               </Link>
-              <Link href="/dashboard/patient/messages" className="block px-3 py-2 rounded hover:bg-red-500/40" onClick={() => setDrawerOpen(false)}>
+              <Link href="/dashboard/patient/messages" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
                 Messages
               </Link>
             </nav>
@@ -126,7 +126,7 @@ export default function PatientLayout({
 
       {/* Content */}
       <div className="flex flex-col bg-background min-h-screen md:h-screen md:overflow-hidden">
-        <header className="bg-red-600 text-white px-4 md:px-6 h-14 flex items-center justify-between sticky top-0 z-10">
+        <header className="bg-[#800000] text-white px-4 md:px-6 h-14 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <button
               className="md:hidden rounded-md p-2 hover:bg-white/10"

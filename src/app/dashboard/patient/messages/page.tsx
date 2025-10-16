@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, CheckCheck, Circle } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
 type ProfileInfo = {
@@ -16,6 +17,7 @@ type Msg = {
   recipient_user_id: string;
   content: string;
   created_at: string;
+  read_at: string | null;
 };
 
 export default function PatientMessagesPage() {
@@ -27,6 +29,7 @@ export default function PatientMessagesPage() {
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [profileCache, setProfileCache] = useState<Record<string, ProfileInfo>>({});
   const profileCacheRef = useRef<Record<string, ProfileInfo>>({});
@@ -107,7 +110,7 @@ export default function PatientMessagesPage() {
     (async () => {
       const { data, error } = await supabase
         .from("messages")
-        .select("id,sender_user_id,recipient_user_id,content,created_at")
+        .select("id,sender_user_id,recipient_user_id,content,created_at,read_at")
         .or(
           `and(sender_user_id.eq.${me},recipient_user_id.eq.${selectedAdminId}),and(sender_user_id.eq.${selectedAdminId},recipient_user_id.eq.${me})`
         )
@@ -136,6 +139,14 @@ export default function PatientMessagesPage() {
           ) {
             setMsgs((m) => [...m, row]);
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        (payload) => {
+          const row = payload.new as Msg;
+          setMsgs((m) => m.map((existing) => (existing.id === row.id ? row : existing)));
         }
       )
       .subscribe();
@@ -182,6 +193,33 @@ export default function PatientMessagesPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs]);
 
+  useEffect(() => {
+    if (!me || !selectedAdminId || msgs.length === 0) return;
+    const unreadIds = msgs
+      .filter((msg) => msg.recipient_user_id === me && !msg.read_at)
+      .map((msg) => msg.id);
+    if (unreadIds.length === 0) return;
+
+    void supabase
+      .from("messages")
+      .update({ read_at: new Date().toISOString() })
+      .in("id", unreadIds);
+  }, [msgs, me, selectedAdminId]);
+
+  useEffect(() => {
+    if (!selectedAdminId) return;
+    const presenceChannel = supabase.channel("patient-presence-status");
+    presenceChannel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        setOnlineUsers((prev) => ({ ...prev, [selectedAdminId]: true }));
+      }
+    });
+
+    return () => {
+      supabase.removeChannel(presenceChannel);
+    };
+  }, [selectedAdminId]);
+
   async function send() {
     if (!input.trim() || !selectedAdminId || !me) return;
     const content = input.trim();
@@ -195,130 +233,164 @@ export default function PatientMessagesPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)] max-h-[calc(100vh-7rem)]">
-      <h2 className="text-xl font-semibold mb-3">Messages</h2>
-      {loading && <p className="text-sm text-neutral-600">Loading…</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
-      <div className="mb-3">
-        <h3 className="text-sm font-medium text-neutral-700 mb-1">Select an admin</h3>
-        {loading ? (
-          <p className="text-sm text-neutral-500">Fetching admin list…</p>
-        ) : admins.length === 0 ? (
-          <p className="text-sm text-neutral-500">No admin accounts available.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
+    <div className="grid gap-4 md:grid-cols-[280px_1fr] h-[calc(100vh-7rem)] max-h-[calc(100vh-7rem)] overflow-hidden">
+      <aside className="flex flex-col rounded-lg border border-neutral-200 bg-white/90 p-4 shadow-sm min-h-0">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">Support Team</h2>
+            <p className="text-xs text-neutral-500">Choose an admin to ask questions or request help.</p>
+          </div>
+        </div>
+        <div className="mt-4 flex-1 overflow-auto">
+          {loading && <p className="text-sm text-neutral-600">Loading…</p>}
+          {admins.length === 0 && !loading && (
+            <p className="text-sm text-neutral-600">No admin accounts available.</p>
+          )}
+          <ul className="mt-2 space-y-2">
             {admins.map((admin) => {
               const name = admin.full_name ? String(admin.full_name) : "WeCare Admin";
               const isSelected = admin.id === selectedAdminId;
               const thumbnail = admin.avatar_url;
+              const isOnline = onlineUsers[admin.id];
               return (
-                <button
-                  key={admin.id}
-                  type="button"
-                  onClick={() => setSelectedAdminId(admin.id)}
-                  className={`rounded-md border px-3 py-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-red-400 ${
-                    isSelected ? "bg-red-50 border-red-400 text-red-700" : "bg-white hover:bg-neutral-50"
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-sm font-semibold text-neutral-600">
-                      {thumbnail ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={thumbnail} alt={name} className="h-full w-full rounded-full object-cover" />
-                      ) : (
-                        (name.trim()[0] || "A").toUpperCase()
-                      )}
-                    </span>
-                    <span>
-                      <span className="block font-medium">{name}</span>
-                      {admin.email && <span className="block text-xs text-neutral-500">{admin.email}</span>}
-                    </span>
-                  </span>
-                </button>
+                <li key={admin.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAdminId(admin.id)}
+                    className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                      isSelected
+                        ? "border-[#800000] bg-[#800000]/10"
+                        : "border-transparent hover:border-neutral-200 hover:bg-neutral-100"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-sm font-semibold text-neutral-600">
+                        {thumbnail ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumbnail} alt={name} className="h-full w-full rounded-full object-cover" />
+                        ) : (
+                          (name.trim()[0] || "A").toUpperCase()
+                        )}
+                      </span>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-neutral-900">{name}</span>
+                          <span className="flex items-center gap-1 text-xs text-neutral-500">
+                            <Circle className={`h-2 w-2 ${isOnline ? "fill-green-500 text-green-500" : "fill-neutral-300 text-neutral-400"}`} />
+                            {isOnline ? "Online" : "Offline"}
+                          </span>
+                        </div>
+                        {admin.email && <span className="text-xs text-neutral-500">{admin.email}</span>}
+                      </div>
+                    </div>
+                  </button>
+                </li>
               );
             })}
+          </ul>
+        </div>
+      </aside>
+
+      <section className="flex flex-col rounded-lg border border-neutral-200 bg-white/90 p-4 shadow-sm min-h-0">
+        <div className="flex items-center justify-between gap-2 border-b border-neutral-200 pb-3">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">Messages</h2>
+            {selectedAdmin ? (
+              <p className="text-sm text-neutral-600">
+                Chatting with {adminDisplayName}
+                {selectedAdmin.email && <span className="ml-1 text-xs text-neutral-400">({selectedAdmin.email})</span>}
+              </p>
+            ) : (
+              <p className="text-sm text-neutral-600">Select an admin to start a conversation.</p>
+            )}
           </div>
-        )}
-      </div>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
 
-      {selectedAdminId && adminDisplayName ? (
-        <p className="text-sm text-neutral-500 mb-2">
-          Chatting with <span className="font-medium text-neutral-700">{adminDisplayName}</span>
-          {selectedAdmin?.email && <span className="ml-1 text-xs text-neutral-400">({selectedAdmin.email})</span>}
-        </p>
-      ) : admins.length > 0 ? (
-        <p className="text-sm text-neutral-500 mb-2">Select an admin to start the conversation.</p>
-      ) : null}
-
-      <div className="flex-1 overflow-auto card p-3">
-        {selectedAdminId ? (
-          <>
-            {messagesLoading ? (
-              <p className="text-sm text-neutral-500">Loading conversation…</p>
+        <div className="mt-4 flex-1 overflow-y-auto">
+          {selectedAdminId ? (
+            messagesLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-sm text-neutral-500">Loading conversation…</p>
+              </div>
             ) : msgs.length === 0 ? (
-              <p className="text-sm text-neutral-500">No messages yet. Send a message to start the conversation.</p>
+              <div className="flex h-full items-center justify-center">
+                <p className="text-sm text-neutral-500">No messages yet. Send one to begin the conversation.</p>
+              </div>
             ) : (
               msgs.map((m) => {
                 const isMe = m.sender_user_id === me;
                 const senderProfile = profileCache[m.sender_user_id];
                 const senderName = senderProfile?.full_name || (isMe ? "You" : "WeCare Admin");
                 const initial = senderName.trim()[0]?.toUpperCase() ?? "U";
+                const readStatusIcon = isMe
+                  ? m.read_at
+                    ? <CheckCheck className="h-3 w-3 text-green-500" />
+                    : <Check className="h-3 w-3 text-neutral-400" />
+                  : null;
+                const readStatusLabel = isMe ? (m.read_at ? "Read" : "Delivered") : null;
                 return (
-                  <div key={m.id} className={`my-2 flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-sm font-semibold text-neutral-600">
-                        {senderProfile?.avatar_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={senderProfile.avatar_url}
-                            alt={senderName}
-                            className="h-full w-full rounded-full object-cover"
-                          />
-                        ) : (
-                          initial
-                        )}
-                      </span>
-                      <div className={`px-3 py-2 rounded-md max-w-[75%] ${isMe ? 'bg-brand-red text-white' : 'bg-neutral-100'}`}>
-                        <div className="text-xs font-semibold opacity-80 mb-1">
-                          {isMe ? 'You' : senderName}
+                  <div key={m.id} className={`my-3 flex ${isMe ? "justify-end" : "justify-start"}`}>
+                    <div className={`flex max-w-[75%] flex-col gap-1 ${isMe ? "items-end" : "items-start"}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-sm font-semibold text-neutral-600">
+                          {senderProfile?.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={senderProfile.avatar_url} alt={senderName} className="h-full w-full rounded-full object-cover" />
+                          ) : (
+                            initial
+                          )}
+                        </span>
+                        <div className={`rounded-lg px-3 py-2 shadow-sm ${isMe ? "bg-[#800000] text-white" : "bg-neutral-100 text-neutral-900"}`}>
+                          <div className="text-xs font-semibold opacity-80">{isMe ? "You" : senderName}</div>
+                          <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{m.content}</div>
+                          <div className="mt-2 flex items-center gap-2 text-[10px] opacity-70">
+                            <span>{new Date(m.created_at).toLocaleString()}</span>
+                            {readStatusIcon && readStatusLabel && (
+                              <span className="flex items-center gap-1">
+                                {readStatusIcon}
+                                <span>{readStatusLabel}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-sm whitespace-pre-wrap break-words">{m.content}</div>
-                        <div className="text-[10px] opacity-70 mt-1">{new Date(m.created_at).toLocaleString()}</div>
                       </div>
                     </div>
                   </div>
                 );
               })
-            )}
-            <div ref={bottomRef} />
-          </>
-        ) : (
-          <p className="text-sm text-neutral-500">Choose an admin above to view messages.</p>
-        )}
-      </div>
-      <div className="mt-3 flex gap-2">
-        <input
-          className="flex-1 rounded-md border px-3 py-2 disabled:bg-neutral-100 disabled:text-neutral-500"
-          placeholder={selectedAdminId ? `Type a message to ${adminDisplayName ?? 'the admin'}…` : "Select an admin to start messaging"}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          disabled={!selectedAdminId}
-        />
-        <button
-          className="btn-primary rounded-md px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={send}
-          disabled={!selectedAdminId || !input.trim()}
-        >
-          Send
-        </button>
-      </div>
+            )
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-sm text-neutral-500">Choose an admin from the list to view messages.</p>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <input
+            className="flex-1 rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30 disabled:bg-neutral-100 disabled:text-neutral-500"
+            placeholder={selectedAdminId ? `Type a message to ${adminDisplayName ?? 'the admin'}…` : "Select an admin to start messaging"}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            disabled={!selectedAdminId}
+          />
+          <button
+            className="rounded-md bg-[#800000] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#660000] disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={send}
+            disabled={!selectedAdminId || !input.trim()}
+          >
+            Send
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

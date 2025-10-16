@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase/client";
 type Item = { id: string; name: string; stock: number; low_stock_threshold: number };
 
 export default function AdminHome() {
-  const [todayCount, setTodayCount] = useState<number>(0);
+  const [appointmentsCount, setAppointmentsCount] = useState<number>(0);
   const [lowStock, setLowStock] = useState<Item[]>([]);
   const [inventoryItems, setInventoryItems] = useState<Item[]>([]);
   const [dist, setDist] = useState<{ first: number; second: number; third: number } | null>(null);
@@ -21,21 +21,12 @@ export default function AdminHome() {
       setLoading(true);
       setError(null);
 
-      // Today bounds
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setDate(end.getDate() + 1);
-
-      // Appointments today
-      const { data: appts, error: aErr } = await supabase
+      const { count: apptCount, error: apptErr } = await supabase
         .from("appointments")
-        .select("id")
-        .gte("created_at", start.toISOString())
-        .lt("created_at", end.toISOString());
+        .select("id", { count: "exact", head: true });
       if (!active) return;
-      if (aErr) setError(aErr.message);
-      setTodayCount((appts ?? []).length);
+      if (apptErr) setError(apptErr.message);
+      setAppointmentsCount(apptCount ?? 0);
 
       // Low stock (fetch all and filter client-side to avoid complex policies)
       const { data: allItems } = await supabase
@@ -95,88 +86,172 @@ export default function AdminHome() {
     [inventoryChartData]
   );
 
+  const fullyVaccinated = dist?.third ?? 0;
+
+  const metrics = useMemo(
+    () => [
+      {
+        key: "appointments",
+        label: "All Appointments",
+        value: appointmentsCount,
+        description: "Total appointment records",
+        cardClass: "border-blue-200 bg-blue-50/80",
+        labelClass: "text-blue-700/80",
+        valueClass: "text-blue-900",
+      },
+      {
+        key: "low-stock",
+        label: "Low Stock Alerts",
+        value: lowStock.length,
+        description: "Items at or below threshold",
+        cardClass: "border-rose-200 bg-rose-50/80",
+        labelClass: "text-rose-700/80",
+        valueClass: "text-rose-900",
+      },
+      {
+        key: "inventory",
+        label: "Inventory Items",
+        value: inventoryItems.length,
+        description: "Tracked vaccine supplies",
+        cardClass: "border-emerald-200 bg-emerald-50/80",
+        labelClass: "text-emerald-700/80",
+        valueClass: "text-emerald-900",
+      },
+      {
+        key: "fully-vaccinated",
+        label: "Fully Vaccinated",
+        value: fullyVaccinated,
+        description: "Patients with 3 completed doses",
+        cardClass: "border-green-200 bg-green-50/80",
+        labelClass: "text-green-700/80",
+        valueClass: "text-green-900",
+      },
+    ],
+    [appointmentsCount, fullyVaccinated, inventoryItems.length, lowStock.length]
+  );
+
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <section className="card p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold mb-2">Today&apos;s Appointments</h2>
-          <Link href="/dashboard/admin/appointments" className="text-sm underline">Manage</Link>
+    <div className="space-y-6">
+      <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-neutral-900">Admin Dashboard</h1>
+          <p className="text-sm text-neutral-600">Monitor daily activity, inventory levels, and vaccination progress at a glance.</p>
         </div>
-        {loading ? (
-          <p className="text-sm text-neutral-600">Loading…</p>
-        ) : (
-          <div className="text-3xl font-bold">{todayCount}</div>
-        )}
-        {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+        {loading && <span className="text-sm text-neutral-500">Syncing latest data…</span>}
+      </header>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
+          <article
+            key={metric.key}
+            className={`rounded-lg border ${metric.cardClass} p-4 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-md`}
+          >
+            <p className={`text-xs uppercase tracking-wide ${metric.labelClass}`}>{metric.label}</p>
+            <p className={`mt-2 text-2xl font-semibold ${metric.valueClass}`}>{loading ? "…" : metric.value}</p>
+            <p className="text-xs text-neutral-600">{metric.description}</p>
+          </article>
+        ))}
       </section>
 
-      <section className="card p-4">
-        <h2 className="text-lg font-semibold mb-2">Vaccination Distribution</h2>
-        {loading || !dist ? (
-          <p className="text-sm text-neutral-600">Loading…</p>
-        ) : (
-          <div className="w-full h-64">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={90} label>
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+      <div className="grid gap-6 md:grid-cols-2">
+        <section className="rounded-lg border border-blue-100 bg-white/90 p-5 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-neutral-900">All Appointments</h2>
+            <Link
+              href="/dashboard/admin/appointments"
+              className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-200"
+            >
+              Manage
+            </Link>
           </div>
-        )}
-      </section>
+          <div className="mt-6 text-4xl font-bold text-blue-900">{loading ? "…" : appointmentsCount}</div>
+          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        </section>
 
-      <section className="card p-4 md:col-span-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold mb-2">Inventory Overview</h2>
-          <Link href="/dashboard/admin/inventory" className="text-sm underline">View Inventory</Link>
-        </div>
-        {loading ? (
-          <p className="text-sm text-neutral-600">Loading…</p>
-        ) : inventoryChartData.length === 0 ? (
-          <p className="text-sm text-neutral-600">No inventory items found.</p>
-        ) : (
-          <div className="w-full h-72">
-            <ResponsiveContainer>
-              <BarChart data={inventoryChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#fef2f2" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} interval={0} angle={-25} textAnchor="end" height={70} />
-                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} label={{ value: "Stock left", angle: -90, position: "insideLeft", offset: 10 }} />
-                <Tooltip
-                  formatter={(value: number, _name, payload) => {
-                    const threshold = payload?.payload?.threshold;
-                    return [`${value}`, `Stock left${typeof threshold === "number" ? ` (threshold ${threshold})` : ""}`];
-                  }}
-                />
-                <Bar dataKey="stock" radius={[4, 4, 0, 0]}>
-                  {inventoryColors.map((color, idx) => (
-                    <Cell key={`inventory-bar-${idx}`} fill={color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+        <section className="rounded-lg border border-rose-100 bg-white/90 p-5 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-neutral-900">Vaccination Distribution</h2>
+            <Link
+              href="/dashboard/admin/patients"
+              className="inline-flex items-center rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-200"
+            >
+              View Patients
+            </Link>
           </div>
-        )}
-      </section>
+          {loading || !dist ? (
+            <p className="mt-6 text-sm text-neutral-600">Loading…</p>
+          ) : (
+            <div className="mt-4 h-64 w-full">
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={90} label>
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
 
-      <section className="card p-4 md:col-span-2">
-        <h2 className="text-lg font-semibold mb-2">Low Stock Items</h2>
-        {loading ? (
-          <p className="text-sm text-neutral-600">Loading…</p>
-        ) : lowStock.length === 0 ? (
-          <p className="text-sm text-neutral-600">No low stock items.</p>
-        ) : (
-          <ul className="text-sm list-disc ml-5">
-            {lowStock.map((i) => (
-              <li key={i.id}>{i.name} — Stock {i.stock} (threshold {i.low_stock_threshold})</li>
-            ))}
-          </ul>
-        )}
-      </section>
+        <section className="rounded-lg border border-neutral-200 bg-white/90 p-5 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg md:col-span-2">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold text-neutral-900">Inventory Overview</h2>
+            <Link
+              href="/dashboard/admin/inventory"
+              className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-200"
+            >
+              View Inventory
+            </Link>
+          </div>
+          {loading ? (
+            <p className="mt-4 text-sm text-neutral-600">Loading…</p>
+          ) : inventoryChartData.length === 0 ? (
+            <p className="mt-4 text-sm text-neutral-600">No inventory items found.</p>
+          ) : (
+            <div className="mt-4 h-72 w-full">
+              <ResponsiveContainer>
+                <BarChart data={inventoryChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} interval={0} angle={-25} textAnchor="end" height={70} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} label={{ value: "Stock left", angle: -90, position: "insideLeft", offset: 10 }} />
+                  <Tooltip
+                    formatter={(value: number, _name, payload) => {
+                      const threshold = payload?.payload?.threshold;
+                      return [`${value}`, `Stock left${typeof threshold === "number" ? ` (threshold ${threshold})` : ""}`];
+                    }}
+                  />
+                  <Bar dataKey="stock" radius={[4, 4, 0, 0]}>
+                    {inventoryColors.map((color, idx) => (
+                      <Cell key={`inventory-bar-${idx}`} fill={color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-amber-200 bg-amber-50/60 p-5 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-lg md:col-span-2">
+          <h2 className="text-lg font-semibold text-neutral-900">Low Stock Items</h2>
+          {loading ? (
+            <p className="mt-3 text-sm text-neutral-600">Loading…</p>
+          ) : lowStock.length === 0 ? (
+            <p className="mt-3 text-sm text-neutral-600">No low stock items.</p>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {lowStock.map((item) => (
+                <div key={item.id} className="rounded-lg border border-amber-200 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-sm font-medium text-neutral-900">{item.name}</p>
+                  <p className="text-xs text-neutral-600">Stock {item.stock} · Threshold {item.low_stock_threshold}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

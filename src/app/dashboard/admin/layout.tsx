@@ -50,7 +50,7 @@ export default function AdminLayout({
 
   const desktopLinkClass = (href: string) => {
     const base = "block px-3 py-2 rounded transition-colors";
-    return isActive(href) ? `${base} bg-white text-red-600` : `${base} hover:bg-red-500/40`;
+    return isActive(href) ? `${base} bg-white text-[#800000]` : `${base} hover:bg-[#800000]/40`;
   };
 
   const mobileLinkClass = desktopLinkClass;
@@ -93,7 +93,7 @@ export default function AdminLayout({
       className={`min-h-screen md:h-screen md:overflow-hidden grid grid-cols-1 ${collapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[240px_1fr]"}`}
     >
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex bg-red-600 text-white p-4 flex-col gap-3 md:sticky md:top-0 md:h-screen">
+      <aside className="hidden md:flex bg-[#800000] text-white p-4 flex-col gap-3 md:sticky md:top-0 md:h-screen">
         <div className="text-lg font-semibold mb-2">{collapsed ? "WA" : "WeCare Admin"}</div>
         <nav className="flex-1 space-y-1">
           {navItems.map((item) => {
@@ -127,7 +127,7 @@ export default function AdminLayout({
       {drawerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/30" onClick={() => setDrawerOpen(false)} />
-          <aside className="relative z-10 bg-red-600 text-white w-64 h-full p-4 flex flex-col gap-3">
+          <aside className="relative z-10 bg-[#800000] text-white w-64 h-full p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between mb-2">
               <div className="text-lg font-semibold">WeCare Admin</div>
               <button
@@ -161,7 +161,7 @@ export default function AdminLayout({
 
       {/* Content */}
       <div className="flex flex-col bg-background min-h-screen md:h-screen md:overflow-hidden">
-        <header className="bg-red-600 text-white px-4 md:px-6 h-14 flex items-center justify-between sticky top-0 z-10">
+        <header className="bg-[#800000] text-white px-4 md:px-6 h-14 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <button
               className="md:hidden rounded-md p-2 hover:bg-white/20"

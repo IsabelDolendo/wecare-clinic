@@ -17,6 +17,8 @@ type InventoryItem = { id: string; name: string; stock: number };
 type AppointmentContact = { contact_number: string | null; appointment_id: string | null };
 type PatientSummary = { userId: string; maxDose: number; doses: VaccRow[] };
 
+const SMS_MAX_LENGTH = 320;
+
 export default function AdminPatientsPage() {
   const [vaccs, setVaccs] = useState<VaccRow[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
@@ -54,6 +56,17 @@ export default function AdminPatientsPage() {
 
   const inProgress = summary.filter((s) => s.maxDose < 3);
   const fully = summary.filter((s) => s.maxDose >= 3);
+
+  const metrics = useMemo(() => {
+    const totalPatients = summary.length;
+    const totalDoses = vaccs.length;
+    return {
+      totalPatients,
+      inProgress: inProgress.length,
+      fully: fully.length,
+      totalDoses,
+    };
+  }, [fully.length, inProgress.length, summary.length, vaccs.length]);
 
   async function load() {
     setLoading(true);
@@ -284,46 +297,96 @@ export default function AdminPatientsPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Patients</h2>
-      {loading && <p className="text-sm text-neutral-600">Loading…</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Patients</h2>
+          <p className="text-sm text-neutral-600">Track vaccination progress, reach out to patients, and record completed doses.</p>
+        </div>
+        {loading && <span className="text-sm text-neutral-500">Syncing latest records…</span>}
+      </header>
 
-      <section className="card p-4">
-        <h3 className="font-semibold mb-2">In-Progress (Dose &lt; 3)</h3>
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
+      )}
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <article className="rounded-lg border border-blue-200 bg-blue-50/80 p-4 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
+          <p className="text-xs uppercase tracking-wide text-blue-700/80">Total Patients</p>
+          <p className="mt-2 text-2xl font-semibold text-blue-900">{metrics.totalPatients}</p>
+        </article>
+        <article className="rounded-lg border border-amber-200 bg-amber-50/80 p-4 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
+          <p className="text-xs uppercase tracking-wide text-amber-700/80">In-progress</p>
+          <p className="mt-2 text-2xl font-semibold text-amber-900">{metrics.inProgress}</p>
+        </article>
+        <article className="rounded-lg border border-green-200 bg-green-50/80 p-4 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
+          <p className="text-xs uppercase tracking-wide text-green-700/80">Fully vaccinated</p>
+          <p className="mt-2 text-2xl font-semibold text-green-900">{metrics.fully}</p>
+        </article>
+        <article className="rounded-lg border border-purple-200 bg-purple-50/80 p-4 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
+          <p className="text-xs uppercase tracking-wide text-purple-700/80">Completed doses</p>
+          <p className="mt-2 text-2xl font-semibold text-purple-900">{metrics.totalDoses}</p>
+        </article>
+      </section>
+
+      <section className="space-y-4 rounded-lg border border-neutral-200 bg-white/80 p-5 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-lg">
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-neutral-900">In-progress patients</h3>
+            <p className="text-sm text-neutral-600">Dose completion under 3/3.</p>
+          </div>
+          {availableItems.length === 0 && (
+            <span className="inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">
+              <span className="inline-flex h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
+              No inventory available
+            </span>
+          )}
+        </div>
         {inProgress.length === 0 ? (
           <p className="text-sm text-neutral-600">No patients in progress.</p>
         ) : (
-          <div className="overflow-auto">
-            <table className="min-w-full border text-sm">
+          <div className="overflow-hidden rounded-lg border border-neutral-200">
+            <table className="min-w-full divide-y divide-neutral-200 text-sm">
               <thead className="bg-neutral-50">
                 <tr>
-                  <th className="text-left p-2 border-b">Patient</th>
-                  <th className="text-left p-2 border-b">Contact</th>
-                  <th className="text-left p-2 border-b">Progress</th>
-                  <th className="text-left p-2 border-b">Actions</th>
+                  <th className="p-3 text-left font-medium text-neutral-600">Patient</th>
+                  <th className="p-3 text-left font-medium text-neutral-600">Contact</th>
+                  <th className="p-3 text-left font-medium text-neutral-600">Progress</th>
+                  <th className="p-3 text-left font-medium text-neutral-600">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-neutral-200">
                 {inProgress.map((row) => (
-                  <tr key={row.userId} className="hover:bg-neutral-50">
-                    <td className="p-2 border-b">{getProfileName(row.userId)}</td>
-                    <td className="p-2 border-b">{getContactNumber(row.userId) ?? "—"}</td>
-                    <td className="p-2 border-b">
-                      <span className={`px-2 py-0.5 rounded-full text-xs ${progressClass(row.maxDose)}`}>
+                  <tr key={row.userId} className="bg-white">
+                    <td className="p-3 font-medium text-neutral-900">{getProfileName(row.userId)}</td>
+                    <td className="p-3 text-neutral-600">{getContactNumber(row.userId) ?? "—"}</td>
+                    <td className="p-3">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${progressClass(row.maxDose)}`}>
                         {row.maxDose}/3 doses
                       </span>
                     </td>
-                    <td className="p-2 border-b space-x-2">
-                      <button className="rounded-md border px-3 py-1" onClick={() => openView(row)}>View Details</button>
-                      <button className="rounded-md border px-3 py-1" onClick={() => openSms(row)}>Send SMS</button>
-                      <button
-                        className="rounded-md border px-3 py-1"
-                        onClick={() => openVacc(row)}
-                        disabled={availableItems.length === 0}
-                        title={availableItems.length === 0 ? "No vaccine inventory available" : undefined}
-                      >
-                        Record Vaccination
-                      </button>
+                    <td className="p-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+                          onClick={() => openView(row)}
+                        >
+                          View Details
+                        </button>
+                        <button
+                          className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
+                          onClick={() => openSms(row)}
+                        >
+                          Send SMS
+                        </button>
+                        <button
+                          className="rounded-md bg-[#800000] px-3 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-[#660000] disabled:opacity-60"
+                          onClick={() => openVacc(row)}
+                          disabled={availableItems.length === 0}
+                          title={availableItems.length === 0 ? "No vaccine inventory available" : undefined}
+                        >
+                          Record Vaccination
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -333,35 +396,39 @@ export default function AdminPatientsPage() {
         )}
       </section>
 
-      <section className="card p-4">
-        <h3 className="font-semibold mb-2">Fully Vaccinated (3/3)</h3>
+      <section className="space-y-4 rounded-lg border border-neutral-200 bg-white/80 p-5 shadow-sm">
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-neutral-900">Fully vaccinated patients</h3>
+            <p className="text-sm text-neutral-600">Completed 3/3 doses.</p>
+          </div>
+        </div>
         {fully.length === 0 ? (
           <p className="text-sm text-neutral-600">No fully vaccinated patients.</p>
         ) : (
-          <ul className="text-sm space-y-2">
+          <div className="grid gap-2">
             {fully.map((r) => (
-              <li key={r.userId}>
-                <button
-                  type="button"
-                  onClick={() => openView(r)}
-                  className="w-full rounded-md border px-3 py-2 text-left hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-red-400"
-                >
-                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <span className="font-medium">{getProfileName(r.userId)}</span>
-                      <span className="ml-2 text-xs text-neutral-500">3/3 doses</span>
-                      {getContactNumber(r.userId) && (
-                        <span className="ml-2 text-xs text-neutral-600">({getContactNumber(r.userId)})</span>
-                      )}
-                    </div>
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${progressClass(r.maxDose)}`}>
-                      {vaccinationStatusLabel(r.maxDose)}
-                    </span>
+              <button
+                key={r.userId}
+                type="button"
+                onClick={() => openView(r)}
+                className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-left shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-300"
+              >
+                <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                  <div className="text-sm text-neutral-700">
+                    <span className="font-medium text-neutral-900">{getProfileName(r.userId)}</span>
+                    <span className="ml-2 text-xs text-neutral-500">3/3 doses</span>
+                    {getContactNumber(r.userId) && (
+                      <span className="ml-2 text-xs text-neutral-500">({getContactNumber(r.userId)})</span>
+                    )}
                   </div>
-                </button>
-              </li>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${progressClass(r.maxDose)}`}>
+                    {vaccinationStatusLabel(r.maxDose)}
+                  </span>
+                </div>
+              </button>
             ))}
-          </ul>
+          </div>
         )}
       </section>
 
@@ -369,45 +436,55 @@ export default function AdminPatientsPage() {
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={closeView} />
           <div className="relative z-10 mx-auto mt-10 max-w-2xl w-[calc(100%-2rem)]">
-            <div className="bg-white rounded-md shadow-lg p-4 md:p-6 max-h-[80vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">Vaccination Details</h3>
+            <div className="max-h-[80vh] overflow-y-auto rounded-xl bg-white p-5 md:p-6 shadow-xl ring-1 ring-black/5 transition-transform duration-200 ease-out">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold">Vaccination Details</h3>
+                  <p className="text-sm text-neutral-600">Overview of doses completed by this patient.</p>
+                </div>
                 <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeView}>×</button>
               </div>
-              <div className="space-y-3 text-sm">
-                <div><span className="text-neutral-500">Patient:</span> {getProfileName(viewPatient.userId)}</div>
-                <div><span className="text-neutral-500">Contact:</span> {getContactNumber(viewPatient.userId) ?? "—"}</div>
-                <div>
-                  <span className="text-neutral-500">Status:</span>{" "}
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${progressClass(viewPatient.maxDose)}`}>
+              <div className="mt-4 grid gap-3 text-sm">
+                <div className="rounded-md border border-neutral-200 bg-neutral-50/80 p-3">
+                  <div className="font-medium text-neutral-900">{getProfileName(viewPatient.userId)}</div>
+                  <div className="text-neutral-600">{getContactNumber(viewPatient.userId) ?? "No contact available"}</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-neutral-600">Status:</span>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${progressClass(viewPatient.maxDose)}`}>
                     {vaccinationStatusLabel(viewPatient.maxDose)}
                   </span>
+                  <span className="text-neutral-600">Progress:</span>
+                  <span className="font-medium text-neutral-900">{viewPatient.maxDose}/3 doses</span>
                 </div>
                 <div>
-                  <span className="text-neutral-500">Progress:</span>{" "}
-                  <span className="font-medium">{viewPatient.maxDose}/3 doses</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2">Vaccination History</h4>
+                  <h4 className="text-sm font-semibold text-neutral-900">Vaccination history</h4>
                   {viewPatient.doses.length === 0 ? (
-                    <p className="text-neutral-600">No vaccinations recorded.</p>
+                    <p className="text-sm text-neutral-600">No vaccinations recorded.</p>
                   ) : (
-                    <div className="grid md:grid-cols-2 gap-3">
+                    <div className="mt-2 grid gap-3 md:grid-cols-2">
                       {viewPatient.doses.map((dose) => (
-                        <div key={dose.id} className="rounded border p-3 space-y-1">
-                          <div><span className="text-neutral-500">Dose:</span> {dose.dose_number}</div>
-                          <div>
-                            <span className="text-neutral-500">Vaccine:</span> {dose.vaccine_item_id ? itemNames[dose.vaccine_item_id] ?? "—" : "—"}
+                        <div key={dose.id} className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
+                          <div className="text-sm font-medium text-neutral-900">Dose {dose.dose_number}</div>
+                          <div className="text-sm text-neutral-600">
+                            <span className="font-medium text-neutral-700">Vaccine:</span> {dose.vaccine_item_id ? itemNames[dose.vaccine_item_id] ?? "—" : "—"}
                           </div>
-                          <div><span className="text-neutral-500">Administered:</span> {formatDate(dose.administered_at)}</div>
+                          <div className="text-sm text-neutral-600">
+                            <span className="font-medium text-neutral-700">Administered:</span> {formatDate(dose.administered_at)}
+                          </div>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
               </div>
-              <div className="mt-4 flex justify-end">
-                <button className="rounded-md border px-4 py-2" onClick={closeView}>Close</button>
+              <div className="mt-5 flex justify-end">
+                <button
+                  className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+                  onClick={closeView}
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
@@ -418,28 +495,49 @@ export default function AdminPatientsPage() {
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={closeSms} />
           <div className="relative z-10 mx-auto mt-10 max-w-xl w-[calc(100%-2rem)]">
-            <div className="bg-white rounded-md shadow-lg p-4 md:p-6 max-h-[80vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">Send SMS</h3>
+            <div className="max-h-[80vh] overflow-y-auto rounded-xl bg-white p-5 md:p-6 shadow-xl ring-1 ring-black/5 transition-transform duration-200 ease-out">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold">Send SMS Update</h3>
+                  <p className="text-sm text-neutral-600">Keep patients informed about their vaccination schedule.</p>
+                </div>
                 <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeSms}>×</button>
               </div>
-              <div className="space-y-3 text-sm">
-                <div><span className="text-neutral-500">Patient:</span> {getProfileName(smsPatient.userId)}</div>
-                <div><span className="text-neutral-500">Contact:</span> {getContactNumber(smsPatient.userId) ?? "—"}</div>
+              <div className="mt-4 space-y-3 text-sm">
+                <div className="rounded-md border border-neutral-200 bg-neutral-50/80 p-3">
+                  <div className="font-medium text-neutral-900">{getProfileName(smsPatient.userId)}</div>
+                  <div className="text-neutral-600">{getContactNumber(smsPatient.userId) ?? "No contact available"}</div>
+                </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="sms-message">Message</label>
+                  <label className="block text-sm font-medium text-neutral-700" htmlFor="sms-message">Message</label>
                   <textarea
                     id="sms-message"
-                    className="w-full rounded-md border px-3 py-2 min-h-32"
+                    className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 min-h-32 resize-none shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
                     value={smsMessage}
-                    onChange={(e) => setSmsMessage(e.target.value)}
+                    onChange={(e) => setSmsMessage(e.target.value.slice(0, SMS_MAX_LENGTH))}
+                    maxLength={SMS_MAX_LENGTH}
+                    placeholder="Type your SMS update here…"
                   />
+                  <div className="mt-1 flex justify-between text-xs text-neutral-500">
+                    <span>Share reminders or progress updates.</span>
+                    <span>{smsMessage.length}/{SMS_MAX_LENGTH}</span>
+                  </div>
                 </div>
               </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button className="rounded-md border px-4 py-2" onClick={closeSms} disabled={smsSending}>Cancel</button>
-                <button className="btn-primary rounded-md px-4 py-2" onClick={submitSms} disabled={smsSending}>
-                  {smsSending ? "Sending…" : "Send"}
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+                  onClick={closeSms}
+                  disabled={smsSending}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60"
+                  onClick={submitSms}
+                  disabled={smsSending || smsMessage.trim().length === 0}
+                >
+                  {smsSending ? "Sending…" : "Send Message"}
                 </button>
               </div>
             </div>
@@ -451,22 +549,27 @@ export default function AdminPatientsPage() {
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={closeVacc} />
           <div className="relative z-10 mx-auto mt-10 max-w-xl w-[calc(100%-2rem)]">
-            <div className="bg-white rounded-md shadow-lg p-4 md:p-6 max-h-[80vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold">Record Vaccination</h3>
+            <div className="max-h-[80vh] overflow-y-auto rounded-xl bg-white p-5 md:p-6 shadow-xl ring-1 ring-black/5 transition-transform duration-200 ease-out">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold">Record Vaccination</h3>
+                  <p className="text-sm text-neutral-600">Log completed doses to keep patient progress accurate.</p>
+                </div>
                 <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeVacc}>×</button>
               </div>
-              <div className="space-y-3 text-sm">
-                <div><span className="text-neutral-500">Patient:</span> {getProfileName(vaccPatient.userId)}</div>
-                <div><span className="text-neutral-500">Current Progress:</span> {vaccPatient.maxDose}/3 doses</div>
+              <div className="mt-4 space-y-3 text-sm">
+                <div className="rounded-md border border-neutral-200 bg-neutral-50/80 p-3">
+                  <div className="font-medium text-neutral-900">{getProfileName(vaccPatient.userId)}</div>
+                  <div className="text-neutral-600">Current progress: {vaccPatient.maxDose}/3 doses</div>
+                </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="vacc-item">Select Vaccine Item</label>
+                  <label className="block text-sm font-medium text-neutral-700" htmlFor="vacc-item">Select vaccine item</label>
                   {availableItems.length === 0 ? (
-                    <p className="text-red-700 bg-red-50 rounded-md px-3 py-2">No vaccine inventory available. Please restock first.</p>
+                    <p className="mt-1 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">No vaccine inventory available. Please restock first.</p>
                   ) : (
                     <select
                       id="vacc-item"
-                      className="w-full rounded-md border px-3 py-2"
+                      className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
                       value={vaccItemId ?? ""}
                       onChange={(e) => setVaccItemId(e.target.value)}
                     >
@@ -479,10 +582,16 @@ export default function AdminPatientsPage() {
                   )}
                 </div>
               </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button className="rounded-md border px-4 py-2" onClick={closeVacc} disabled={vaccProcessing}>Cancel</button>
+              <div className="mt-5 flex justify-end gap-2">
                 <button
-                  className="btn-primary rounded-md px-4 py-2"
+                  className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+                  onClick={closeVacc}
+                  disabled={vaccProcessing}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-md bg-[#800000] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#660000] disabled:opacity-60"
                   onClick={confirmVaccination}
                   disabled={vaccProcessing || availableItems.length === 0}
                 >
