@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AppointmentSchema, type AppointmentValues, OwnershipOptions } from "@/lib/types/appointments";
@@ -8,6 +8,69 @@ import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 const steps = ["Personal Details", "Animal Bite Details", "Wound Management"] as const;
+
+const getRequiredFieldsForStep = (values: AppointmentValues, currentStep: number): (keyof AppointmentValues)[] => {
+  if (currentStep === 0) {
+    return [
+      "full_name",
+      "address",
+      "birthday",
+      "age",
+      "sex",
+      "civil_status",
+      "contact_number",
+      "date_of_bite",
+      "time_of_bite",
+      "bite_address",
+    ];
+  }
+
+  if (currentStep === 1) {
+    const required: (keyof AppointmentValues)[] = [
+      "category",
+      "animal",
+      "ownership",
+      "animal_state",
+    ];
+
+    if (values.animal === "other") {
+      required.push("animal_other");
+    }
+
+    if (values.animal_vaccinated_12mo) {
+      required.push("vaccinated_by");
+      if (values.vaccinated_by === "other") {
+        required.push("vaccinated_by_other");
+      }
+    }
+
+    return required;
+  }
+
+  if (currentStep === 2) {
+    return ["site_of_bite"];
+  }
+
+  return [];
+};
+
+const categoryOptions = [
+  {
+    value: "I",
+    label: "Category I",
+    description: "Touching or feeding animals, licks on intact skin.",
+  },
+  {
+    value: "II",
+    label: "Category II",
+    description: "Nibbling of uncovered skin, minor scratches or abrasions without bleeding.",
+  },
+  {
+    value: "III",
+    label: "Category III",
+    description: "Single or multiple transdermal bites or scratches, licks on broken skin, exposure to bats.",
+  },
+];
 
 export default function PatientAppointmentsPage() {
   const [step, setStep] = useState(0);
@@ -27,7 +90,107 @@ export default function PatientAppointmentsPage() {
     },
   });
 
-  const next = () => setStep((s) => Math.min(s + 1, steps.length - 1));
+  const birthdayValue = form.watch("birthday");
+
+  useEffect(() => {
+    let active = true;
+
+    const loadProfile = async () => {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        return;
+      }
+
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .maybeSingle<{ full_name: string | null }>();
+
+      if (!active || !profile || profileError) {
+        return;
+      }
+
+      if (profile.full_name && form.getValues("full_name") !== profile.full_name) {
+        form.setValue("full_name", profile.full_name, {
+          shouldDirty: false,
+          shouldTouch: false,
+        });
+      }
+    };
+
+    loadProfile();
+
+    return () => {
+      active = false;
+    };
+  }, [form]);
+
+  useEffect(() => {
+    if (!birthdayValue) {
+      const currentAge = form.getValues("age");
+      if (!Number.isNaN(currentAge ?? Number.NaN)) {
+        form.setValue("age", Number.NaN, {
+          shouldDirty: false,
+          shouldTouch: false,
+          shouldValidate: true,
+        });
+      }
+      return;
+    }
+
+    const birthDate = new Date(birthdayValue);
+
+    if (Number.isNaN(birthDate.getTime())) {
+      const currentAge = form.getValues("age");
+      if (!Number.isNaN(currentAge ?? Number.NaN)) {
+        form.setValue("age", Number.NaN, {
+          shouldDirty: false,
+          shouldTouch: false,
+          shouldValidate: true,
+        });
+      }
+      return;
+    }
+
+    const today = new Date();
+    let computedAge = today.getFullYear() - birthDate.getFullYear();
+    const hasHadBirthdayThisYear =
+      today.getMonth() > birthDate.getMonth() ||
+      (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());
+
+    if (!hasHadBirthdayThisYear) {
+      computedAge -= 1;
+    }
+
+    computedAge = Math.max(0, computedAge);
+
+    if (form.getValues("age") !== computedAge) {
+      form.setValue("age", computedAge, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: true,
+      });
+    }
+  }, [birthdayValue, form]);
+
+  const next = async () => {
+    const fieldsToValidate = getRequiredFieldsForStep(form.getValues(), step);
+    if (fieldsToValidate && fieldsToValidate.length > 0) {
+      const isValid = await form.trigger(fieldsToValidate, { shouldFocus: true });
+      if (!isValid) {
+        return;
+      }
+    }
+    setStep((s) => Math.min(s + 1, steps.length - 1));
+  };
   const back = () => setStep((s) => Math.max(s - 1, 0));
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -178,10 +341,19 @@ export default function PatientAppointmentsPage() {
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Category</label>
-              <div className="flex gap-4">
-                {["I", "II", "III"].map((c) => (
-                  <label key={c} className="flex items-center gap-2">
-                    <input type="radio" value={c} {...form.register("category")} /> {c}
+              <div className="space-y-3">
+                {categoryOptions.map((category) => (
+                  <label key={category.value} className="flex gap-3 rounded-md border px-3 py-2">
+                    <input
+                      type="radio"
+                      value={category.value}
+                      {...form.register("category")}
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="font-medium text-sm">{category.label}</p>
+                      <p className="text-xs text-neutral-600">{category.description}</p>
+                    </div>
                   </label>
                 ))}
               </div>
@@ -298,7 +470,7 @@ export default function PatientAppointmentsPage() {
         <div className="flex items-center justify-between">
           <button type="button" onClick={back} disabled={step === 0} className="rounded-md border px-4 py-2 disabled:opacity-50">Back</button>
           {step < steps.length - 1 ? (
-            <button type="button" onClick={next} className="btn-primary rounded-md px-4 py-2">Next</button>
+            <button type="button" onClick={() => void next()} className="btn-primary rounded-md px-4 py-2">Next</button>
           ) : (
             <button type="submit" className="btn-primary rounded-md px-4 py-2" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? "Submitting..." : "Submit Booking"}

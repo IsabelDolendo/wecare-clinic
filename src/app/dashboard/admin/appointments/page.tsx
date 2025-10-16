@@ -45,6 +45,7 @@ export default function AdminAppointmentsPage() {
   const [settleAppt, setSettleAppt] = useState<Appt | null>(null);
   const [settleItemId, setSettleItemId] = useState<string | null>(null);
   const [settleProcessing, setSettleProcessing] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   // Filters and pagination
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -172,6 +173,31 @@ export default function AdminAppointmentsPage() {
       : s === "cancelled"
       ? "bg-red-100 text-red-700"
       : "bg-neutral-200 text-neutral-800";
+
+  async function cancelAppointment(appt: Appt) {
+    if (cancellingId) return;
+    const confirmed = window.confirm(`Cancel booking for ${appt.full_name}?`);
+    if (!confirmed) return;
+
+    setCancellingId(appt.id);
+    setError(null);
+
+    const { error: cancelError } = await supabase
+      .from("appointments")
+      .update({ status: "cancelled" })
+      .eq("id", appt.id);
+
+    if (cancelError) {
+      setError(cancelError.message);
+      setCancellingId(null);
+      return;
+    }
+
+    await load();
+    await loadStats();
+    await loadHistory();
+    setCancellingId(null);
+  }
 
   const fetchAppointments = useCallback(
     async (pageParam: number, searchParam: string, statusParam: StatusFilter) => {
@@ -611,6 +637,13 @@ export default function AdminAppointmentsPage() {
                             disabled={r.status !== "pending" && r.status !== "submitted"}
                           >
                             Mark as Settled
+                          </button>
+                          <button
+                            className="rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none"
+                            onClick={() => void cancelAppointment(r)}
+                            disabled={r.status === "cancelled" || r.status === "settled" || cancellingId === r.id}
+                          >
+                            {cancellingId === r.id ? "Cancelling…" : "Cancel"}
                           </button>
                         </div>
                       </td>

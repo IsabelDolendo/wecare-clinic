@@ -92,6 +92,27 @@ export default function EVaccinationCardPage() {
     return map;
   }, [rows]);
 
+  const stats = useMemo(() => {
+    if (rows.length === 0) {
+      return {
+        totalCompleted: 0,
+        totalCourses: 0,
+        lastUpdated: null as string | null,
+      };
+    }
+
+    const lastDose = rows
+      .slice()
+      .filter((r) => r.administered_at)
+      .sort((a, b) => new Date(b.administered_at ?? "").getTime() - new Date(a.administered_at ?? "").getTime())[0];
+
+    return {
+      totalCompleted: rows.length,
+      totalCourses: grouped.size,
+      lastUpdated: lastDose?.administered_at ?? null,
+    };
+  }, [grouped.size, rows]);
+
   const downloadCard = useCallback(
     async (groupKey: string) => {
       const node = cardRefs.current[groupKey];
@@ -121,11 +142,31 @@ export default function EVaccinationCardPage() {
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-        <h2 className="text-xl font-semibold">E‑Vaccination Card</h2>
-        {rows.length > 0 && (
-          <p className="text-xs text-neutral-500">Use “Download PNG” under each card to export just that card.</p>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">E‑Vaccination Card</h2>
+          <p className="text-sm text-neutral-600">
+            Review your completed vaccination courses and export a digital copy for clinic or travel requirements.
+          </p>
+        </div>
+        {stats.totalCompleted > 0 && (
+          <div className="flex gap-3">
+            <div className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-center shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-neutral-500">Total Doses</p>
+              <p className="text-lg font-semibold text-neutral-900">{stats.totalCompleted}</p>
+            </div>
+            <div className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-center shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-neutral-500">Vaccination Courses</p>
+              <p className="text-lg font-semibold text-neutral-900">{stats.totalCourses}</p>
+            </div>
+            <div className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-center shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-neutral-500">Last Dose</p>
+              <p className="text-sm font-semibold text-neutral-900">
+                {stats.lastUpdated ? new Date(stats.lastUpdated).toLocaleDateString() : "—"}
+              </p>
+            </div>
+          </div>
         )}
       </div>
       {loading && <p className="text-sm text-neutral-600">Loading…</p>}
@@ -142,47 +183,86 @@ export default function EVaccinationCardPage() {
         return (
           <div className="space-y-3" key={groupKey}>
             <div
-              className="card p-6 break-inside-avoid-page"
+              className="break-inside-avoid-page rounded-2xl border border-neutral-200 bg-gradient-to-br from-white via-white to-neutral-50 p-6 shadow-sm"
               ref={(el) => {
                 cardRefs.current[groupKey] = el;
               }}
             >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-semibold text-lg">WeCare Clinic E‑Vaccination Card</div>
-                  <div className="text-sm text-neutral-600">{ap?.full_name ?? "Patient"}</div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-brand-red">WeCare Clinic</p>
+                  <p className="text-xl font-semibold text-neutral-900">E‑Vaccination Record</p>
+                  <p className="text-sm text-neutral-600">{ap?.full_name ?? "Patient"}</p>
                 </div>
-                <div className="text-xs text-neutral-500">Generated: {new Date().toLocaleString()}</div>
+                <div className="text-right text-xs text-neutral-500">
+                  {sortedDoses.every((d) => d.status === "completed") ? (
+                    <p className="inline-flex items-center gap-2 rounded-full bg-green-50 px-2.5 py-1 font-medium text-green-700">
+                      Completed Series
+                      <span className="inline-flex h-2 w-2 rounded-full bg-green-500" aria-hidden />
+                    </p>
+                  ) : (
+                    <p className="inline-flex items-center gap-2 rounded-full bg-yellow-50 px-2.5 py-1 font-medium text-yellow-800">
+                      Pending Series
+                      <span className="inline-flex h-2 w-2 rounded-full bg-yellow-400" aria-hidden />
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="mt-4">
-                <table className="w-full border text-sm">
-                  <thead className="bg-neutral-50">
+              <div className="mt-6 overflow-hidden rounded-xl border border-neutral-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-neutral-50 text-neutral-600">
                     <tr>
-                      <th className="text-left p-2 border-b">Dose #</th>
-                      <th className="text-left p-2 border-b">Vaccine</th>
-                      <th className="text-left p-2 border-b">Administered At</th>
+                      <th className="p-3 text-left font-medium">Dose</th>
+                      <th className="p-3 text-left font-medium">Vaccine</th>
+                      <th className="p-3 text-left font-medium">Administered on</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-neutral-200">
                     {sortedDoses.map((d) => (
-                      <tr key={d.id}>
-                        <td className="p-2 border-b">{d.dose_number}</td>
-                        <td className="p-2 border-b">{d.vaccine_item_id ? items[d.vaccine_item_id]?.name ?? "—" : "—"}</td>
-                        <td className="p-2 border-b">{d.administered_at ? new Date(d.administered_at).toLocaleString() : "—"}</td>
+                      <tr key={d.id} className="odd:bg-white even:bg-neutral-50/60">
+                        <td className="p-3 font-medium text-neutral-900">
+                          <span className="inline-flex h-7 min-w-[2.5rem] items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
+                            {d.dose_number}
+                          </span>
+                        </td>
+                        <td className="p-3 text-neutral-800">
+                          {d.vaccine_item_id ? items[d.vaccine_item_id]?.name ?? "—" : "—"}
+                        </td>
+                        <td className="p-3 text-neutral-700">
+                          {d.administered_at
+                            ? new Date(d.administered_at).toLocaleString(undefined, {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })
+                            : "—"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
-            <div className="flex justify-end">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-neutral-500">
+                Keep a copy of this vaccination record for future appointments or travel documentation.
+              </p>
               <button
                 type="button"
                 onClick={() => downloadCard(groupKey)}
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-neutral-50"
+                className="inline-flex items-center gap-2 rounded-md border border-brand-red/20 bg-brand-red text-sm font-medium text-white px-4 py-1.5 shadow-sm transition hover:bg-brand-red/90 disabled:opacity-60"
                 disabled={downloadingKey === groupKey}
               >
-                {downloadingKey === groupKey ? "Preparing…" : "Download PNG"}
+                {downloadingKey === groupKey ? (
+                  <>
+                    <span className="h-3 w-3 animate-spin rounded-full border-[2px] border-white/60 border-r-transparent" />
+                    Preparing…
+                  </>
+                ) : (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-white" aria-hidden />
+                    Download PNG
+                  </>
+                )}
               </button>
             </div>
           </div>
