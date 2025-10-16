@@ -30,6 +30,7 @@ export default function PatientMessagesPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<Record<string, boolean>>({});
+  const [showContacts, setShowContacts] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [profileCache, setProfileCache] = useState<Record<string, ProfileInfo>>({});
   const profileCacheRef = useRef<Record<string, ProfileInfo>>({});
@@ -37,6 +38,15 @@ export default function PatientMessagesPage() {
   useEffect(() => {
     profileCacheRef.current = profileCache;
   }, [profileCache]);
+
+  useEffect(() => {
+    if (!showContacts) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [showContacts]);
 
   const selectedAdmin = useMemo(
     () => (selectedAdminId ? admins.find((admin) => admin.id === selectedAdminId) ?? null : null),
@@ -48,6 +58,7 @@ export default function PatientMessagesPage() {
       ? String(selectedAdmin.full_name)
       : "WeCare Admin"
     : null;
+  const selectedAdminOnline = selectedAdminId ? onlineUsers[selectedAdminId] : false;
 
   useEffect(() => {
     let active = true;
@@ -233,13 +244,29 @@ export default function PatientMessagesPage() {
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-[280px_1fr] h-[calc(100vh-7rem)] max-h-[calc(100vh-7rem)] overflow-hidden">
-      <aside className="flex flex-col rounded-lg border border-neutral-200 bg-white/90 p-4 shadow-sm min-h-0">
-        <div className="flex items-center justify-between gap-2">
+    <div className="grid min-h-screen gap-3 md:grid-cols-[280px_1fr] md:h-[calc(100vh-7rem)] md:min-h-0 md:max-h-[calc(100vh-7rem)] md:gap-4 md:overflow-hidden">
+      {showContacts && (
+        <div className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm md:hidden" onClick={() => setShowContacts(false)} />
+      )}
+      <aside
+        className={`rounded-lg border border-neutral-200 bg-white/95 shadow-sm transition-all duration-200 ${
+          showContacts
+            ? "fixed inset-0 z-40 m-3 flex min-h-0 flex-col overflow-hidden p-4 md:static md:m-0 md:flex md:p-4"
+            : "hidden md:relative md:flex md:min-h-0 md:flex-col md:p-4"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-neutral-900">Support Team</h2>
             <p className="text-xs text-neutral-500">Choose an admin to ask questions or request help.</p>
           </div>
+          <button
+            type="button"
+            className="rounded-md border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 md:hidden"
+            onClick={() => setShowContacts(false)}
+          >
+            Close
+          </button>
         </div>
         <div className="mt-4 flex-1 overflow-auto">
           {loading && <p className="text-sm text-neutral-600">Loading…</p>}
@@ -256,7 +283,10 @@ export default function PatientMessagesPage() {
                 <li key={admin.id}>
                   <button
                     type="button"
-                    onClick={() => setSelectedAdminId(admin.id)}
+                    onClick={() => {
+                      setSelectedAdminId(admin.id);
+                      setShowContacts(false);
+                    }}
                     className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                       isSelected
                         ? "border-[#800000] bg-[#800000]/10"
@@ -291,15 +321,34 @@ export default function PatientMessagesPage() {
         </div>
       </aside>
 
-      <section className="flex flex-col rounded-lg border border-neutral-200 bg-white/90 p-4 shadow-sm min-h-0">
-        <div className="flex items-center justify-between gap-2 border-b border-neutral-200 pb-3">
-          <div>
-            <h2 className="text-lg font-semibold text-neutral-900">Messages</h2>
+      <section className="flex min-h-0 flex-col rounded-lg border border-neutral-200 bg-white/95 p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col gap-3 border-b border-neutral-200 pb-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-2 md:block">
+              <h2 className="text-lg font-semibold text-neutral-900">Messages</h2>
+              <button
+                type="button"
+                className="rounded-md border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 md:hidden"
+                onClick={() => setShowContacts(true)}
+              >
+                Support Team
+              </button>
+            </div>
             {selectedAdmin ? (
-              <p className="text-sm text-neutral-600">
-                Chatting with {adminDisplayName}
-                {selectedAdmin.email && <span className="ml-1 text-xs text-neutral-400">({selectedAdmin.email})</span>}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-600">
+                <span>
+                  Chatting with {adminDisplayName}
+                  {selectedAdmin.email && <span className="ml-1 text-xs text-neutral-400">({selectedAdmin.email})</span>}
+                </span>
+                <span className="flex items-center gap-1 text-xs text-neutral-500">
+                  <Circle
+                    className={`h-2.5 w-2.5 ${
+                      selectedAdminOnline ? "fill-green-500 text-green-500" : "fill-neutral-300 text-neutral-400"
+                    }`}
+                  />
+                  {selectedAdminOnline ? "Online" : "Offline"}
+                </span>
+              </div>
             ) : (
               <p className="text-sm text-neutral-600">Select an admin to start a conversation.</p>
             )}
@@ -331,7 +380,7 @@ export default function PatientMessagesPage() {
                 const readStatusLabel = isMe ? (m.read_at ? "Read" : "Delivered") : null;
                 return (
                   <div key={m.id} className={`my-3 flex ${isMe ? "justify-end" : "justify-start"}`}>
-                    <div className={`flex max-w-[75%] flex-col gap-1 ${isMe ? "items-end" : "items-start"}`}>
+                    <div className={`flex max-w-[85%] flex-col gap-1 ${isMe ? "items-end" : "items-start"} sm:max-w-[75%]`}>
                       <div className="flex items-center gap-2">
                         <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-sm font-semibold text-neutral-600">
                           {senderProfile?.avatar_url ? (
@@ -341,10 +390,14 @@ export default function PatientMessagesPage() {
                             initial
                           )}
                         </span>
-                        <div className={`rounded-lg px-3 py-2 shadow-sm ${isMe ? "bg-[#800000] text-white" : "bg-neutral-100 text-neutral-900"}`}>
+                        <div
+                          className={`rounded-lg px-3 py-2 shadow-sm ${
+                            isMe ? "bg-[#800000] text-white" : "bg-neutral-100 text-neutral-900"
+                          }`}
+                        >
                           <div className="text-xs font-semibold opacity-80">{isMe ? "You" : senderName}</div>
                           <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{m.content}</div>
-                          <div className="mt-2 flex items-center gap-2 text-[10px] opacity-70">
+                          <div className="mt-2 flex items-center gap-2 text-[10px] opacity-80">
                             <span>{new Date(m.created_at).toLocaleString()}</span>
                             {readStatusIcon && readStatusLabel && (
                               <span className="flex items-center gap-1">
@@ -368,7 +421,7 @@ export default function PatientMessagesPage() {
           <div ref={bottomRef} />
         </div>
 
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <input
             className="flex-1 rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30 disabled:bg-neutral-100 disabled:text-neutral-500"
             placeholder={selectedAdminId ? `Type a message to ${adminDisplayName ?? 'the admin'}…` : "Select an admin to start messaging"}
