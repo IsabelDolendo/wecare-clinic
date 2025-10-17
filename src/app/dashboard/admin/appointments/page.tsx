@@ -132,8 +132,6 @@ export default function AdminAppointmentsPage() {
   };
 
   const detailLabelMap: Record<string, string> = {
-    id: "Appointment ID",
-    user_id: "Patient User ID",
     full_name: "Patient Name",
     contact_number: "Contact Number",
     created_at: "Submitted On",
@@ -753,6 +751,7 @@ export default function AdminAppointmentsPage() {
                       <h4 className="text-base font-semibold text-[#800000]">Submission Data</h4>
                       <div className="grid gap-3 md:grid-cols-2">
                         {Object.entries(detail)
+                          .filter(([k]) => k !== "id" && k !== "user_id")
                           .sort(([a], [b]) => a.localeCompare(b))
                           .map(([k, v]) => (
                             <div key={k} className="rounded-md border border-neutral-200 bg-white/80 p-3">
