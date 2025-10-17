@@ -3,6 +3,7 @@
 import Link from "next/link";
 import LogoutButton from "@/components/LogoutButton";
 import NotificationsBell from "@/components/NotificationsBell";
+import SiteFooter from "@/components/SiteFooter";
 import { useEffect, useState } from "react";
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -135,11 +136,13 @@ export default function PatientLayout({
             >
               <Menu size={20} />
             </button>
+            <span className="text-base font-semibold text-white md:hidden">WeCare Web App</span>
             <h1 className="text-lg font-semibold hidden md:block">WeCare Patient Dashboard</h1>
           </div>
           <NotificationsBell />
         </header>
         <main className="p-4 md:p-6 flex-1 overflow-y-auto">{children}</main>
+        <SiteFooter className="mt-auto" />
       </div>
     </div>
   );

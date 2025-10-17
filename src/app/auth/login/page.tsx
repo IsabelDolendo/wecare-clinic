@@ -9,6 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Suspense, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
+import SiteFooter from "@/components/SiteFooter";
 
 const LoginSchema = z.object({
   email: z.string().email(),
@@ -91,118 +92,119 @@ function LoginContent() {
     <div className="relative min-h-screen">
       {/* Background image with blur overlay */}
       <div
-        className="absolute inset-0 bg-center bg-cover"
+        className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: "url('/images/wecare-bg.jpg')" }}
       />
-      <div className="absolute inset-0 backdrop-blur-sm bg-white/50" />
+      <div className="absolute inset-0 bg-white/50 backdrop-blur-sm" />
 
-      {/* Form card */}
-      <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
-        <div className="card w-full max-w-md overflow-hidden p-0">
-          <div className="bg-brand-red p-6 md:p-7 flex items-center justify-center">
-            <Image
-              src="/images/logo.jpg"
-              alt="WeCare logo"
-              width={320}
-              height={160}
-              className="h-auto max-h-32 w-full object-contain drop-shadow-lg"
-              priority
-            />
-          </div>
-          <div className="p-6">
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <h1 className="text-2xl font-semibold mb-1 text-center">Welcome to WeCare</h1>
-              <p className="text-sm text-neutral-600 mb-6 text-center">Sign in to continue</p>
+      <div className="relative z-10 flex min-h-screen flex-col">
+        {/* Form card */}
+        <div className="flex flex-1 items-center justify-center p-4">
+          <div className="card w-full max-w-md overflow-hidden p-0">
+            <div className="flex items-center justify-center bg-brand-red p-6 md:p-7">
+              <Image
+                src="/images/logo.jpg"
+                alt="WeCare logo"
+                width={320}
+                height={160}
+                className="h-auto max-h-32 w-full object-contain drop-shadow-lg"
+                priority
+              />
+            </div>
+            <div className="p-6">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <h1 className="mb-1 text-center text-2xl font-semibold">Welcome to WeCare</h1>
+                <p className="mb-6 text-center text-sm text-neutral-600">Sign in to continue</p>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <input
-                  type="email"
-                  className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
-                  placeholder="you@example.com"
-                  {...register("email")}
-                />
-                {errors.email && (
-                  <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Password</label>
-                <div className="relative">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Email</label>
                   <input
-                    type={showPassword ? "text" : "password"}
-                    className="w-full rounded-md border px-3 pr-10 py-2 outline-none focus:ring-2 focus:ring-brand-red"
-                    placeholder="••••••••"
-                    {...register("password")}
+                    type="email"
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                    placeholder="you@example.com"
+                    {...register("email")}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((s) => !s)}
-                    className="absolute inset-y-0 right-2 flex items-center text-neutral-500 hover:text-neutral-700"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
+                  {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
                 </div>
-                {errors.password && (
-                  <p className="text-red-600 text-sm mt-1">{errors.password.message}</p>
-                )}
-                <div className="mt-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForgotOpen((o) => !o);
-                      if (!forgotOpen) setResetEmail(watchEmail || "");
-                    }}
-                    className="text-sm text-brand-red underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-                {forgotOpen && (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex gap-2">
-                      <input
-                        type="email"
-                        className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
-                        placeholder="you@example.com"
-                        value={resetEmail}
-                        onChange={(e) => setResetEmail(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        onClick={sendPasswordReset}
-                        className="btn-primary rounded-md px-3 py-2"
-                        disabled={sendingReset}
-                      >
-                        {sendingReset ? "Sending..." : "Send"}
-                      </button>
-                    </div>
-                    {resetError && <p className="text-red-600 text-sm">{resetError}</p>}
-                    {resetMessage && <p className="text-green-700 text-sm">{resetMessage}</p>}
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      className="w-full rounded-md border px-3 pr-10 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                      placeholder="••••••••"
+                      {...register("password")}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((s) => !s)}
+                      className="absolute inset-y-0 right-2 flex items-center text-neutral-500 hover:text-neutral-700"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
-                )}
-              </div>
+                  {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>}
+                  <div className="mt-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotOpen((o) => !o);
+                        if (!forgotOpen) setResetEmail(watchEmail || "");
+                      }}
+                      className="text-sm text-brand-red underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  {forgotOpen && (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="email"
+                          className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                          placeholder="you@example.com"
+                          value={resetEmail}
+                          onChange={(e) => setResetEmail(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={sendPasswordReset}
+                          className="btn-primary rounded-md px-3 py-2"
+                          disabled={sendingReset}
+                        >
+                          {sendingReset ? "Sending..." : "Send"}
+                        </button>
+                      </div>
+                      {resetError && <p className="text-sm text-red-600">{resetError}</p>}
+                      {resetMessage && <p className="text-sm text-green-700">{resetMessage}</p>}
+                    </div>
+                  )}
+                </div>
 
-              {error && <p className="text-red-600 text-sm">{error}</p>}
+                {error && <p className="text-sm text-red-600">{error}</p>}
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="btn-primary w-full rounded-md px-4 py-2 disabled:opacity-60"
-              >
-                {isSubmitting ? "Signing in..." : "Sign in"}
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="btn-primary w-full rounded-md px-4 py-2 disabled:opacity-60"
+                >
+                  {isSubmitting ? "Signing in..." : "Sign in"}
+                </button>
+              </form>
 
-            <p className="text-sm mt-6 text-center">
-              Don&apos;t have an account? {" "}
-              <Link href="/auth/register" className="text-brand-red underline">
-                Register
-              </Link>
-            </p>
+              <p className="mt-6 text-center text-sm">
+                Don&apos;t have an account? {" "}
+                <Link href="/auth/register" className="text-brand-red underline">
+                  Register
+                </Link>
+              </p>
+            </div>
           </div>
         </div>
+
+        <SiteFooter className="relative z-10 mt-8" />
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import Link from "next/link";
-import Image from "next/image";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import TipsCarousel from "./TipsCarousel";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -65,49 +65,19 @@ export default async function PatientHome() {
         </div>
       </section>
 
-      <section className="card p-5">
-        <h3 className="text-lg font-semibold mb-1">Bite Care Tips</h3>
-        <p className="text-sm text-neutral-600 mb-4">
-          Follow these quick reminders to stay safe after an animal bite incident.
+      <section className="card p-5 space-y-3 bg-white/90">
+        <h3 className="text-lg font-semibold text-neutral-900">Clinic Hours & Booking Availability</h3>
+        <p className="text-sm text-neutral-700 leading-relaxed">
+          WeCare Clinic welcomes you <strong>Monday to Saturday, from 8:00 AM to 5:00 PM</strong>. Our team accommodates every
+          patient—there&apos;s no cap on daily bookings—so feel confident scheduling the care you need whenever it works best for you.
         </p>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {tips.map((tip, index) => (
-            <div
-              key={tip.title}
-              className="rounded-lg border bg-white/90 p-3 shadow-sm transition-transform duration-300 hover:-translate-y-1 hover:shadow-lg"
-              style={{
-                animation: "tipFadeUp 0.6s ease both",
-                animationDelay: `${index * 0.1}s`,
-              }}
-            >
-              <div className="overflow-hidden rounded-md border">
-                <Image
-                  src={tip.image}
-                  alt={tip.alt}
-                  width={600}
-                  height={400}
-                  className="w-full h-auto"
-                  priority={index === 0}
-                />
-              </div>
-              <h4 className="mt-3 text-base font-semibold text-neutral-900">{tip.title}</h4>
-              <p className="text-sm text-neutral-600">{tip.description}</p>
-            </div>
-          ))}
+        <div className="rounded-md border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900">
+          <p className="font-medium">Planning your visit?</p>
+          <p>Secure your appointment in advance and arrive a few minutes early for a smooth experience.</p>
         </div>
       </section>
-      <style>{`
-        @keyframes tipFadeUp {
-          from {
-            opacity: 0;
-            transform: translateY(16px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
+
+      <TipsCarousel tips={tips} />
     </div>
   );
 }
