@@ -5,7 +5,25 @@ import Link from "next/link";
 import { Bar, BarChart, CartesianGrid, PieChart, Pie, Cell, Tooltip, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { supabase } from "@/lib/supabase/client";
 
-type Item = { id: string; name: string; stock: number; low_stock_threshold: number };
+type Item = { id: string; name: string; stock: number; low_stock_threshold: number; expiration_date: string | null };
+
+type ExpirationStatus = "expired" | "expiring" | null;
+
+const EXPIRY_WARNING_DAYS = 30;
+
+function getExpirationStatus(expirationDate: string | null): ExpirationStatus {
+  if (!expirationDate) return null;
+  const expiry = new Date(expirationDate);
+  if (Number.isNaN(expiry.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const normalizedExpiry = new Date(expiry);
+  normalizedExpiry.setHours(0, 0, 0, 0);
+  if (normalizedExpiry.getTime() < today.getTime()) return "expired";
+  const diffDays = (normalizedExpiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+  if (diffDays <= EXPIRY_WARNING_DAYS) return "expiring";
+  return null;
+}
 
 export default function AdminHome() {
   const [appointmentsCount, setAppointmentsCount] = useState<number>(0);
@@ -31,7 +49,7 @@ export default function AdminHome() {
       // Low stock (fetch all and filter client-side to avoid complex policies)
       const { data: allItems } = await supabase
         .from("inventory_items")
-        .select("id,name,stock,low_stock_threshold");
+        .select("id,name,stock,low_stock_threshold,expiration_date");
       const items = (allItems ?? []) as Item[];
       const lows = items.filter((i) => i.stock <= i.low_stock_threshold);
       setInventoryItems(items);
@@ -66,6 +84,18 @@ export default function AdminHome() {
       { name: "3rd Dose", value: dist.third, color: "#b91c1c" },
     ] : []
   ), [dist]);
+
+  const expiryAlerts = useMemo(
+    () => inventoryItems.filter((item) => getExpirationStatus(item.expiration_date)),
+    [inventoryItems]
+  );
+
+  const expiredCount = useMemo(
+    () => expiryAlerts.filter((item) => getExpirationStatus(item.expiration_date) === "expired").length,
+    [expiryAlerts]
+  );
+
+  const expiringSoonCount = expiryAlerts.length - expiredCount;
 
   const inventoryChartData = useMemo(
     () =>
@@ -118,6 +148,18 @@ export default function AdminHome() {
         valueClass: "text-emerald-900",
       },
       {
+        key: "expiry-alerts",
+        label: "Expiry Alerts",
+        value: expiryAlerts.length,
+        description:
+          loading
+            ? "Checking upcoming expiries"
+            : `${expiredCount} expired · ${expiringSoonCount} expiring soon`,
+        cardClass: "border-amber-200 bg-amber-50/80",
+        labelClass: "text-amber-700/80",
+        valueClass: "text-amber-900",
+      },
+      {
         key: "fully-vaccinated",
         label: "Fully Vaccinated",
         value: fullyVaccinated,
@@ -127,7 +169,7 @@ export default function AdminHome() {
         valueClass: "text-green-900",
       },
     ],
-    [appointmentsCount, fullyVaccinated, inventoryItems.length, lowStock.length]
+    [appointmentsCount, expiredCount, expiryAlerts.length, expiringSoonCount, fullyVaccinated, inventoryItems.length, loading, lowStock.length]
   );
 
   return (

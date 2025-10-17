@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS public.inventory_items (
   description text,
   stock integer NOT NULL DEFAULT 0,
   low_stock_threshold integer NOT NULL DEFAULT 10,
+  expiration_date date,
   status inventory_status NOT NULL DEFAULT 'active',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()

@@ -10,7 +10,26 @@ type Item = {
   stock: number;
   low_stock_threshold: number;
   status: "active" | "inactive";
+  expiration_date: string | null;
 };
+
+type ExpirationStatus = "expired" | "expiring" | null;
+
+const EXPIRY_WARNING_DAYS = 30;
+
+function getExpirationStatus(expirationDate: string | null): ExpirationStatus {
+  if (!expirationDate) return null;
+  const expiry = new Date(expirationDate);
+  if (Number.isNaN(expiry.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const normalizedExpiry = new Date(expiry);
+  normalizedExpiry.setHours(0, 0, 0, 0);
+  if (normalizedExpiry.getTime() < today.getTime()) return "expired";
+  const diffDays = (normalizedExpiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+  if (diffDays <= EXPIRY_WARNING_DAYS) return "expiring";
+  return null;
+}
 
 type UsageRecord = {
   id: string;
@@ -31,11 +50,14 @@ export default function InventoryPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", stock: 0, low_stock_threshold: 10 });
+  const [form, setForm] = useState({ name: "", description: "", stock: 0, low_stock_threshold: 10, expiration_date: "" });
   const [saving, setSaving] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "", stock: 0 });
+  const [editForm, setEditForm] = useState({ name: "", description: "", stock: 0, expiration_date: "" });
   const [updating, setUpdating] = useState(false);
+
+  const [showExpiryModal, setShowExpiryModal] = useState(false);
+  const [hasShownExpiryModal, setHasShownExpiryModal] = useState(false);
 
   const [usageItem, setUsageItem] = useState<Item | null>(null);
   const [usageRows, setUsageRows] = useState<UsageRecord[]>([]);
@@ -62,6 +84,20 @@ export default function InventoryPage() {
     return { totalItems, totalStock, availableCount, unavailableCount };
   }, [items]);
 
+  const formatExpirationDate = useCallback((dateStr: string | null) => {
+    if (!dateStr) return "—";
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return "—";
+    return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }, []);
+
+  const expiryAlerts = useMemo(() => items.filter((item) => getExpirationStatus(item.expiration_date)), [items]);
+  const expiredCount = useMemo(
+    () => expiryAlerts.filter((item) => getExpirationStatus(item.expiration_date) === "expired").length,
+    [expiryAlerts]
+  );
+  const expiringSoonCount = expiryAlerts.length - expiredCount;
+
   const availabilityLabel = (status: Item["status"]) => (status === "active" ? "Available" : "Unavailable");
 
   const availabilityBadgeClass = (status: Item["status"]) =>
@@ -74,7 +110,7 @@ export default function InventoryPage() {
 
       let query = supabase
         .from("inventory_items")
-        .select("id, name, description, stock, low_stock_threshold, status", { count: "exact" });
+        .select("id, name, description, stock, low_stock_threshold, status, expiration_date", { count: "exact" });
 
       if (statusParam !== "all") {
         query = query.eq("status", statusParam);
@@ -144,6 +180,13 @@ export default function InventoryPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (expiryAlerts.length > 0 && !hasShownExpiryModal) {
+      setShowExpiryModal(true);
+      setHasShownExpiryModal(true);
+    }
+  }, [expiryAlerts, hasShownExpiryModal]);
+
   const statusOptions = useMemo(
     () => [
       { value: "all", label: "All Availability" },
@@ -162,10 +205,11 @@ export default function InventoryPage() {
       stock: Number(form.stock) || 0,
       low_stock_threshold: Number(form.low_stock_threshold) || 10,
       status: "active",
+      expiration_date: form.expiration_date || null,
     });
     setSaving(false);
     if (error) return setError(error.message);
-    setForm({ name: "", description: "", stock: 0, low_stock_threshold: 10 });
+    setForm({ name: "", description: "", stock: 0, low_stock_threshold: 10, expiration_date: "" });
     if (page !== 1) setPage(1);
     await load({ page: 1 });
   }
@@ -181,6 +225,7 @@ export default function InventoryPage() {
       name: item.name,
       description: item.description ?? "",
       stock: item.stock,
+      expiration_date: item.expiration_date ? item.expiration_date.slice(0, 10) : "",
     });
     setEditingItem(item);
   }
@@ -209,12 +254,14 @@ export default function InventoryPage() {
     const parsedStock = Number(editForm.stock);
     const stock = Number.isFinite(parsedStock) ? Math.max(0, Math.round(parsedStock)) : editingItem.stock;
     const description = editForm.description.trim();
+    const expiration_date = editForm.expiration_date ? editForm.expiration_date : null;
     const { error } = await supabase
       .from("inventory_items")
       .update({
         name,
         description: description.length > 0 ? description : null,
         stock,
+        expiration_date,
       })
       .eq("id", editingItem.id);
     if (error) {
@@ -292,10 +339,26 @@ export default function InventoryPage() {
           <h2 className="text-xl font-semibold">Inventory</h2>
           <p className="text-sm text-neutral-600">Monitor vaccine availability, track low stock items, and review usage history.</p>
         </div>
-        {lowStockCount > 0 && (
-          <div className="inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-sm text-red-700">
-            <span className="inline-flex h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
-            <span>{lowStockCount} low stock alert{lowStockCount > 1 ? "s" : ""}</span>
+        {(lowStockCount > 0 || expiryAlerts.length > 0) && (
+          <div className="flex flex-col items-start gap-2 md:items-end">
+            {lowStockCount > 0 && (
+              <div className="inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-sm text-red-700">
+                <span className="inline-flex h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
+                <span>{lowStockCount} low stock alert{lowStockCount > 1 ? "s" : ""}</span>
+              </div>
+            )}
+            {expiryAlerts.length > 0 && (
+              <button
+                className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-200"
+                onClick={() => setShowExpiryModal(true)}
+              >
+                <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
+                <span>
+                  {expiryAlerts.length} expiry alert{expiryAlerts.length > 1 ? "s" : ""} (
+                  {expiredCount} expired, {expiringSoonCount} warning)
+                </span>
+              </button>
+            )}
           </div>
         )}
       </header>
@@ -332,7 +395,7 @@ export default function InventoryPage() {
             <p className="text-sm text-neutral-600">Keep your inventory up to date by logging newly received vaccines.</p>
           </div>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <label className="text-sm font-medium text-neutral-700">
             Name
             <input
@@ -369,6 +432,15 @@ export default function InventoryPage() {
               className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
               value={form.low_stock_threshold}
               onChange={e=>setForm(f=>({...f,low_stock_threshold:Number(e.target.value)}))}
+            />
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Expiration date
+            <input
+              type="date"
+              className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
+              value={form.expiration_date}
+              onChange={e=>setForm(f=>({...f,expiration_date:e.target.value}))}
             />
           </label>
         </div>
@@ -428,27 +500,50 @@ export default function InventoryPage() {
                       <th className="p-3 text-left font-medium text-neutral-600">Description</th>
                       <th className="p-3 text-left font-medium text-neutral-600">In Stock</th>
                       <th className="p-3 text-left font-medium text-neutral-600">Low Alert</th>
+                      <th className="p-3 text-left font-medium text-neutral-600">Expiration</th>
                       <th className="p-3 text-left font-medium text-neutral-600">Availability</th>
                       <th className="p-3 text-left font-medium text-neutral-600">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-200">
-                    {items.map((it) => (
-                      <tr key={it.id} className={it.stock <= it.low_stock_threshold ? "bg-red-50/70" : "bg-white"}>
-                        <td className="p-3 align-top font-medium text-neutral-900">{it.name}</td>
-                        <td className="p-3 align-top text-neutral-600">{it.description?.length ? it.description : "—"}</td>
-                        <td className="p-3 align-top text-neutral-900">
-                          <span className="font-semibold">{it.stock}</span>
-                          {it.stock <= it.low_stock_threshold && (
-                            <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">Low stock</span>
-                          )}
-                        </td>
-                        <td className="p-3 align-top text-neutral-600">{it.low_stock_threshold}</td>
-                        <td className="p-3 align-top">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${availabilityBadgeClass(it.status)}`}>
-                              {availabilityLabel(it.status)}
-                            </span>
+                    {items.map((it) => {
+                      const expiryStatus = getExpirationStatus(it.expiration_date);
+                      const isLowStock = it.stock <= it.low_stock_threshold;
+                      const rowClass =
+                        expiryStatus === "expired"
+                          ? "bg-red-50/70"
+                          : expiryStatus === "expiring"
+                          ? "bg-amber-50/70"
+                          : isLowStock
+                          ? "bg-red-50/70"
+                          : "bg-white";
+                      return (
+                        <tr key={it.id} className={rowClass}>
+                          <td className="p-3 align-top font-medium text-neutral-900">{it.name}</td>
+                          <td className="p-3 align-top text-neutral-600">{it.description?.length ? it.description : "—"}</td>
+                          <td className="p-3 align-top text-neutral-900">
+                            <span className="font-semibold">{it.stock}</span>
+                            {it.stock <= it.low_stock_threshold && (
+                              <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">Low stock</span>
+                            )}
+                          </td>
+                          <td className="p-3 align-top text-neutral-600">{it.low_stock_threshold}</td>
+                          <td className="p-3 align-top text-neutral-600">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-neutral-900">{formatExpirationDate(it.expiration_date)}</span>
+                              {expiryStatus === "expired" && (
+                                <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">Expired</span>
+                              )}
+                              {expiryStatus === "expiring" && (
+                                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Expiring soon</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3 align-top">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${availabilityBadgeClass(it.status)}`}>
+                                {availabilityLabel(it.status)}
+                              </span>
                             <select
                               className="rounded-md border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-700 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
                               value={it.status}
@@ -482,7 +577,8 @@ export default function InventoryPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -599,12 +695,57 @@ export default function InventoryPage() {
                   disabled={updating}
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700">Expiration date</label>
+                <input
+                  type="date"
+                  className="mt-1 w-full rounded-md border px-3 py-2"
+                  value={editForm.expiration_date}
+                  onChange={(e)=>setEditForm(f=>({...f, expiration_date: e.target.value}))}
+                  disabled={updating}
+                />
+              </div>
             </div>
             <div className="flex justify-end gap-2">
               <button className="rounded-md border px-4 py-2" onClick={closeEditModal} disabled={updating}>Cancel</button>
               <button className="btn-primary rounded-md px-4 py-2" onClick={saveEdit} disabled={updating}>
                 {updating ? "Saving..." : "Save changes"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExpiryModal && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowExpiryModal(false)} />
+          <div className="relative z-10 mx-auto mt-10 w-[calc(100%-2rem)] max-w-xl">
+            <div className="max-h-[80vh] overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold">Vaccine expiry alerts</h3>
+                  <p className="text-sm text-neutral-600">Vaccines expiring within {EXPIRY_WARNING_DAYS} days or already expired.</p>
+                </div>
+                <button className="rounded-md p-2 text-xl leading-none text-neutral-500 hover:bg-neutral-100" onClick={() => setShowExpiryModal(false)} aria-label="Close">×</button>
+              </div>
+              <div className="mt-4 space-y-3">
+                {expiryAlerts.map((item) => {
+                  const status = getExpirationStatus(item.expiration_date);
+                  return (
+                    <div key={item.id} className="rounded border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm">
+                      <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                        <div className="font-medium text-neutral-900">{item.name}</div>
+                        {status === "expired" ? (
+                          <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Expired</span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Expiring soon</span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-neutral-700">Expiration date: {formatExpirationDate(item.expiration_date)}</div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
