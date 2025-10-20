@@ -13,6 +13,15 @@ import { useRouter } from "next/navigation";
 const RegisterSchema = z
   .object({
     fullName: z.string().min(2, "Full name is too short"),
+    address: z.string().min(5, "Address is too short"),
+    birthday: z.string().min(1, "Birthday is required"),
+    contactNumber: z
+      .string()
+      .min(7, "Contact number is too short")
+      .regex(/^\+?[0-9\s-]+$/, "Contact number must contain only numbers, spaces, dashes, or +"),
+    sex: z.enum(["female", "male", "prefer_not_to_say"], {
+      error: "Sex is required",
+    }),
     email: z.string().email(),
     password: z.string().min(6),
     confirmPassword: z.string().min(6),
@@ -43,7 +52,14 @@ export default function RegisterPage() {
       email: values.email,
       password: values.password,
       options: {
-        data: { role: "patient", full_name: values.fullName },
+        data: {
+          role: "patient",
+          full_name: values.fullName,
+          address: values.address,
+          birthday: values.birthday,
+          contact_number: values.contactNumber,
+          sex: values.sex,
+        },
         emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/login` : undefined,
       },
     });
@@ -92,6 +108,55 @@ export default function RegisterPage() {
                   {errors.fullName && (
                     <p className="text-red-600 text-sm mt-1">{errors.fullName.message}</p>
                   )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Address</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                    placeholder="House No., Street, Barangay, City"
+                    {...register("address")}
+                  />
+                  {errors.address && <p className="text-red-600 text-sm mt-1">{errors.address.message}</p>}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Birthday</label>
+                    <input
+                      type="date"
+                      className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                      {...register("birthday")}
+                    />
+                    {errors.birthday && <p className="text-red-600 text-sm mt-1">{errors.birthday.message}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Contact Number</label>
+                    <input
+                      type="tel"
+                      className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                      placeholder="09XX XXX XXXX"
+                      {...register("contactNumber")}
+                    />
+                    {errors.contactNumber && (
+                      <p className="text-red-600 text-sm mt-1">{errors.contactNumber.message}</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Sex</label>
+                  <select
+                    defaultValue=""
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                    {...register("sex")}
+                  >
+                    <option value="" disabled>
+                      Select option
+                    </option>
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                    <option value="prefer_not_to_say">Prefer not to say</option>
+                  </select>
+                  {errors.sex && <p className="text-red-600 text-sm mt-1">{errors.sex.message}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Email</label>

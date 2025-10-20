@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase/client";
 type ProfileInfo = {
   id: string;
   full_name: string | null;
-  phone: string | null;
+  contact_number: string | null;
   avatar_url: string | null;
 };
 
@@ -20,7 +20,7 @@ type Msg = {
   read_at: string | null;
 };
 
-type Contact = { id: string; full_name: string | null; phone: string | null };
+type Contact = { id: string; full_name: string | null; contact_number: string | null };
 type RecentRow = { sender_user_id: string; recipient_user_id: string; created_at: string };
 
 export default function AdminMessagesPage() {
@@ -68,7 +68,7 @@ export default function AdminMessagesPage() {
       if (contactIds.size > 0) {
         const { data: profs } = await supabase
           .from("profiles")
-          .select("id, full_name, phone, avatar_url")
+          .select("id, full_name, contact_number, avatar_url")
           .in("id", Array.from(contactIds));
         const list = (profs ?? []) as Contact[];
         setContacts(list);
@@ -169,7 +169,7 @@ export default function AdminMessagesPage() {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("id, full_name, phone, avatar_url")
+        .select("id, full_name, contact_number, avatar_url")
         .in("id", Array.from(missing));
       if (cancelled || !data) return;
       setProfileCache((prev) => {
@@ -233,7 +233,7 @@ export default function AdminMessagesPage() {
             {contacts.map((c) => {
               const profile = profileCache[c.id];
               const displayName = profile?.full_name || c.full_name || c.id.substring(0, 6);
-              const phoneDisplay = profile?.phone || c.phone || "";
+              const phoneDisplay = profile?.contact_number || c.contact_number || "";
               const initial = displayName.trim()[0]?.toUpperCase() ?? "P";
               const isActive = onlineUsers[c.id];
               return (

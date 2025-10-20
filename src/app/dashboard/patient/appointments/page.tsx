@@ -105,24 +105,90 @@ export default function PatientAppointmentsPage() {
         return;
       }
 
-      const {
-        data: profile,
-        error: profileError,
-      } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", user.id)
-        .maybeSingle<{ full_name: string | null }>();
+      type ProfileRow = {
+        full_name: string | null;
+        address?: string | null;
+        birthday?: string | null;
+        contact_number?: string | null;
+        sex?: string | null;
+      };
 
-      if (!active || !profile || profileError) {
+      let profile: ProfileRow | null = null;
+
+      const primary = await supabase
+        .from("profiles")
+        .select("full_name, address, birthday, contact_number, sex")
+        .eq("id", user.id)
+        .maybeSingle<ProfileRow>();
+
+      if (!primary.error) {
+        profile = primary.data;
+      } else {
+        const fallback = await supabase
+          .from("profiles")
+          .select("full_name, sex")
+          .eq("id", user.id)
+          .maybeSingle<ProfileRow>();
+        if (!fallback.error) {
+          profile = fallback.data;
+        }
+      }
+
+      if (!active || !profile) {
         return;
       }
 
       if (profile.full_name && form.getValues("full_name") !== profile.full_name) {
-        form.setValue("full_name", profile.full_name, {
+        form.setValue("full_name", profile.full_name as AppointmentValues["full_name"], {
           shouldDirty: false,
           shouldTouch: false,
+          shouldValidate: true,
         });
+      }
+
+      if (profile.address && form.getValues("address") !== profile.address) {
+        form.setValue("address", profile.address as AppointmentValues["address"], {
+          shouldDirty: false,
+          shouldTouch: false,
+          shouldValidate: true,
+        });
+      }
+
+      const normalizedBirthday = profile.birthday ?? null;
+      if (normalizedBirthday && form.getValues("birthday") !== normalizedBirthday) {
+        form.setValue("birthday", normalizedBirthday as AppointmentValues["birthday"], {
+          shouldDirty: false,
+          shouldTouch: false,
+          shouldValidate: true,
+        });
+      }
+
+      const contactNumber = profile.contact_number ?? null;
+      if (contactNumber && form.getValues("contact_number") !== contactNumber) {
+        form.setValue("contact_number", contactNumber as AppointmentValues["contact_number"], {
+          shouldDirty: false,
+          shouldTouch: false,
+          shouldValidate: true,
+        });
+      }
+
+      if (profile.sex) {
+        const normalizedSex = (() => {
+          const value = profile.sex.trim().toLowerCase();
+          if (value === "male") return "Male" as const;
+          if (value === "female") return "Female" as const;
+          if (value === "prefer_not_to_say" || value === "prefer not to say") return "Other" as const;
+          if (value === "other") return "Other" as const;
+          return null;
+        })();
+
+        if (normalizedSex && form.getValues("sex") !== normalizedSex) {
+          form.setValue("sex", normalizedSex as AppointmentValues["sex"], {
+            shouldDirty: false,
+            shouldTouch: false,
+            shouldValidate: true,
+          });
+        }
       }
     };
 

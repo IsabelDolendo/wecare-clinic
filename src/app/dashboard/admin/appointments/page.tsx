@@ -134,16 +134,38 @@ export default function AdminAppointmentsPage() {
   const detailLabelMap: Record<string, string> = {
     full_name: "Patient Name",
     contact_number: "Contact Number",
+    address: "Address",
+    birthday: "Birthday",
+    age: "Age",
+    sex: "Sex",
+    civil_status: "Civil Status",
     created_at: "Submitted On",
     updated_at: "Last Updated",
     date_of_bite: "Date of Incident",
+    time_of_bite: "Time of Incident",
     bite_address: "Incident Location",
+    site_of_bite: "Site of Bite",
     category: "Exposure Category",
     animal: "Animal Involved",
     animal_other: "Additional Animal Details",
+    ownership: "Ownership of Animal",
+    animal_state: "Animal Status",
+    animal_vaccinated_12mo: "Animal Vaccinated in Last 12 Months",
+    vaccinated_by: "Vaccinated By",
+    vaccinated_by_other: "Vaccinated By (Other)",
     status: "Current Status",
     settled_at: "Settled At",
     notes: "Notes",
+    wound_washed: "Wound Washed",
+    wound_antiseptic: "Applied Antiseptic",
+    wound_herbal: "Herbal Treatment Used",
+    wound_antibiotics: "Antibiotics Used",
+    wound_other: "Other Treatments",
+    allergies_food: "Food Allergies",
+    allergies_drugs: "Drug Allergies",
+    allergies_other: "Other Allergies",
+    animal_other_details: "Additional Animal Details",
+    processed_by: "Processed By",
   };
 
   const friendlyLabel = (key: string) => {
@@ -153,6 +175,148 @@ export default function AdminAppointmentsPage() {
     const withSpaces = key.replace(/_/g, " ");
     return withSpaces.replace(/\b\w/g, (char) => char.toUpperCase());
   };
+
+  const toTitleCase = (value: string) =>
+    value
+      .split(/\s+/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+
+  const hasContent = (value: unknown) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (typeof value === "number") return !Number.isNaN(value);
+    if (typeof value === "boolean") return true;
+    if (Array.isArray(value)) return value.length > 0;
+    if (value instanceof Date) return !Number.isNaN(value.getTime());
+    if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+    return true;
+  };
+
+  const formatDetailValue = (key: string, value: unknown, detail: Record<string, unknown>) => {
+    if (value === null || value === undefined) {
+      return "—";
+    }
+
+    if (typeof value === "boolean") {
+      return value ? "Yes" : "No";
+    }
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) return "—";
+      return value
+        .map((item) => (typeof item === "string" ? toTitleCase(item.replace(/_/g, " ")) : String(item)))
+        .join(", ");
+    }
+
+    if (typeof value === "number") {
+      if (Number.isNaN(value)) return "—";
+      if (key === "age") return `${value} year${value === 1 ? "" : "s"}`;
+      return value.toString();
+    }
+
+    if (typeof value === "string") {
+      if (value.trim().length === 0) {
+        return "—";
+      }
+      switch (key) {
+        case "birthday":
+          return formatDate(value);
+        case "date_of_bite":
+          return formatDate(value);
+        case "settled_at":
+        case "updated_at":
+          return formatDateTime(value);
+        case "time_of_bite":
+          return value;
+        case "vaccinated_by":
+        case "civil_status":
+        case "sex":
+          return toTitleCase(value);
+        case "vaccinated_by_other":
+        case "animal_other":
+        case "wound_herbal":
+        case "wound_antibiotics":
+        case "wound_other":
+        case "notes":
+        case "address":
+        case "bite_address":
+        case "site_of_bite":
+          return value;
+        default:
+          break;
+      }
+    }
+
+    switch (key) {
+      case "category":
+        return categoryLabel(value as Appt["category"]);
+      case "animal":
+        return animalLabel(value as Appt["animal"], (detail.animal_other as string | null) ?? null);
+      case "ownership":
+        if (Array.isArray(value)) {
+          return value
+            .map((item) => (typeof item === "string" ? toTitleCase(item) : String(item)))
+            .join(", ");
+        }
+        return format(value);
+      case "animal_state":
+        return typeof value === "string" ? toTitleCase(value) : format(value);
+      case "vaccinated_by":
+        if (typeof value === "string") return toTitleCase(value);
+        return format(value);
+      case "processed_by":
+        if (typeof value === "string") return value;
+        return format(value);
+      default:
+        return format(value);
+    }
+  };
+
+  const detailSections: { title: string; keys: string[] }[] = [
+    {
+      title: "Patient Information",
+      keys: ["address", "birthday", "age", "sex", "civil_status"],
+    },
+    {
+      title: "Incident Details",
+      keys: ["date_of_bite", "time_of_bite", "bite_address", "site_of_bite"],
+    },
+    {
+      title: "Exposure Details",
+      keys: [
+        "category",
+        "animal",
+        "animal_other",
+        "ownership",
+        "animal_state",
+        "animal_vaccinated_12mo",
+        "vaccinated_by",
+        "vaccinated_by_other",
+      ],
+    },
+    {
+      title: "Wound Management",
+      keys: ["wound_washed", "wound_antiseptic", "wound_herbal", "wound_antibiotics", "wound_other"],
+    },
+    {
+      title: "Allergies",
+      keys: ["allergies_food", "allergies_drugs", "allergies_other"],
+    },
+    {
+      title: "Additional Notes",
+      keys: ["notes", "updated_at", "settled_at", "processed_by"],
+    },
+  ];
+
+  const excludedDetailKeys = new Set([
+    "id",
+    "user_id",
+    "full_name",
+    "contact_number",
+    "status",
+    "created_at",
+  ]);
 
   const InfoStat = ({ label, value }: { label: string; value: ReactNode }) => (
     <div className="flex flex-col gap-1 rounded-md border border-neutral-200 bg-neutral-50/60 p-3">
@@ -747,19 +911,59 @@ export default function AdminAppointmentsPage() {
                     </div>
                   </section>
                   {detail && (
-                    <section className="space-y-3">
-                      <h4 className="text-base font-semibold text-[#800000]">Submission Data</h4>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        {Object.entries(detail)
-                          .filter(([k]) => k !== "id" && k !== "user_id")
-                          .sort(([a], [b]) => a.localeCompare(b))
-                          .map(([k, v]) => (
-                            <div key={k} className="rounded-md border border-neutral-200 bg-white/80 p-3">
-                              <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{friendlyLabel(k)}</div>
-                              <div className="mt-1 text-sm text-neutral-900 break-words">{format(v)}</div>
+                    <section className="space-y-5">
+                      {detailSections.map((section) => {
+                        const detailRecord = detail as Record<string, unknown>;
+                        const items = section.keys
+                          .map((key) => ({ key, value: detailRecord[key] }))
+                          .filter(({ value, key }) => hasContent(value) && !excludedDetailKeys.has(key));
+
+                        if (items.length === 0) {
+                          return null;
+                        }
+
+                        return (
+                          <div key={section.title} className="space-y-3">
+                            <h4 className="text-base font-semibold text-[#800000]">{section.title}</h4>
+                            <div className="grid gap-3 md:grid-cols-2">
+                              {items.map(({ key, value }) => (
+                                <div key={key} className="rounded-md border border-neutral-200 bg-white/80 p-3">
+                                  <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{friendlyLabel(key)}</div>
+                                  <div className="mt-1 text-sm text-neutral-900 break-words">{formatDetailValue(key, value, detailRecord)}</div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                      </div>
+                          </div>
+                        );
+                      })}
+
+                      {(() => {
+                        const detailRecord = detail as Record<string, unknown>;
+                        const sectionKeys = new Set(detailSections.flatMap((section) => section.keys));
+                        const additionalItems = Object.entries(detailRecord)
+                          .filter(([key]) => !sectionKeys.has(key) && !excludedDetailKeys.has(key))
+                          .filter(([, value]) => hasContent(value));
+
+                        if (additionalItems.length === 0) {
+                          return null;
+                        }
+
+                        return (
+                          <div className="space-y-3">
+                            <h4 className="text-base font-semibold text-[#800000]">Additional Data</h4>
+                            <div className="grid gap-3 md:grid-cols-2">
+                              {additionalItems
+                                .sort(([a], [b]) => a.localeCompare(b))
+                                .map(([key, value]) => (
+                                  <div key={key} className="rounded-md border border-neutral-200 bg-white/80 p-3">
+                                    <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{friendlyLabel(key)}</div>
+                                    <div className="mt-1 text-sm text-neutral-900 break-words">{formatDetailValue(key, value, detailRecord)}</div>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </section>
                   )}
                 </div>

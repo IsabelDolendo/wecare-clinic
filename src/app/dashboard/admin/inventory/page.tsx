@@ -303,15 +303,15 @@ export default function InventoryPage() {
     const rows = (data ?? []) as Omit<UsageRecord, "patient_name" | "patient_contact">[];
     const patientIds = Array.from(new Set(rows.map((row) => row.patient_user_id).filter(Boolean)));
 
-    const nameMap: Record<string, { full_name: string | null; phone: string | null }> = {};
+    const nameMap: Record<string, { full_name: string | null; contact_number: string | null }> = {};
     if (patientIds.length > 0) {
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .select("id, full_name, phone")
+        .select("id, full_name, contact_number")
         .in("id", patientIds);
       if (!profileError) {
-        (profileData ?? []).forEach((profile: { id: string; full_name: string | null; phone: string | null }) => {
-          nameMap[profile.id] = { full_name: profile.full_name, phone: profile.phone };
+        (profileData ?? []).forEach((profile: { id: string; full_name: string | null; contact_number: string | null }) => {
+          nameMap[profile.id] = { full_name: profile.full_name, contact_number: profile.contact_number };
         });
       } else if (!usageError) {
         setUsageError(profileError.message);
@@ -322,7 +322,7 @@ export default function InventoryPage() {
       rows.map((row) => ({
         ...row,
         patient_name: nameMap[row.patient_user_id]?.full_name ?? row.patient_user_id.slice(0, 6),
-        patient_contact: nameMap[row.patient_user_id]?.phone ?? null,
+        patient_contact: nameMap[row.patient_user_id]?.contact_number ?? null,
       }))
     );
     setUsageLoading(false);

@@ -32,7 +32,7 @@ export default function PatientProfilePage() {
       setEmail(u.email ?? "");
       const { data: prof } = await supabase
         .from("profiles")
-        .select("full_name, phone, avatar_url")
+        .select("full_name, contact_number, avatar_url")
         .eq("id", u.id)
         .single();
       if (!active) return;

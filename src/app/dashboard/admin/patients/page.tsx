@@ -12,7 +12,11 @@ type VaccRow = {
   administered_at: string | null;
 };
 
-type Profile = { id: string; full_name: string | null; phone: string | null };
+type Profile = {
+  id: string;
+  full_name: string | null;
+  contact_number: string | null;
+};
 type InventoryItem = { id: string; name: string; stock: number };
 type AppointmentContact = { contact_number: string | null; appointment_id: string | null };
 type PatientSummary = { userId: string; maxDose: number; doses: VaccRow[] };
@@ -95,7 +99,7 @@ export default function AdminPatientsPage() {
       const [profilesRes, appointmentsRes] = await Promise.all([
         supabase
           .from("profiles")
-          .select("id, full_name, phone")
+          .select("id, full_name, contact_number")
           .in("id", patientIds),
         supabase
           .from("appointments")
@@ -108,7 +112,11 @@ export default function AdminPatientsPage() {
         errorMessage = errorMessage ?? profilesRes.error.message;
       } else {
         (profilesRes.data as Profile[] | null)?.forEach((p) => {
-          profileMap[p.id] = p;
+          profileMap[p.id] = {
+            id: p.id,
+            full_name: p.full_name,
+            contact_number: p.contact_number,
+          };
         });
       }
 
@@ -190,7 +198,7 @@ export default function AdminPatientsPage() {
   const getProfileName = (userId: string) => profiles[userId]?.full_name ?? userId.substring(0, 6);
 
   const getContactNumber = (userId: string) =>
-    appointmentContacts[userId]?.contact_number ?? profiles[userId]?.phone ?? null;
+    appointmentContacts[userId]?.contact_number ?? profiles[userId]?.contact_number ?? null;
 
   const openView = (summary: PatientSummary) => setViewPatient(summary);
   const closeView = () => setViewPatient(null);
