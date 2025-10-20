@@ -9,7 +9,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Suspense, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
-import SiteFooter from "@/components/SiteFooter";
 
 const LoginSchema = z.object({
   email: z.string().email(),
@@ -204,7 +203,6 @@ function LoginContent() {
           </div>
         </div>
 
-        <SiteFooter className="relative z-10 mt-8" />
       </div>
     </div>
   );

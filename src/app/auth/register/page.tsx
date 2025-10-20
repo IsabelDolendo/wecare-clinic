@@ -9,7 +9,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import SiteFooter from "@/components/SiteFooter";
 
 const RegisterSchema = z
   .object({
@@ -173,7 +172,6 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        <SiteFooter className="relative z-10 mt-8" />
       </div>
     </div>
   );

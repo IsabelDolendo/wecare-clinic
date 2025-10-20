@@ -3,9 +3,20 @@
 import Link from "next/link";
 import LogoutButton from "@/components/LogoutButton";
 import NotificationsBell from "@/components/NotificationsBell";
-import SiteFooter from "@/components/SiteFooter";
 import { useEffect, useState } from "react";
-import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Menu,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  LayoutDashboard,
+  CalendarCheck,
+  History,
+  Syringe,
+  UserCog,
+  Info,
+  MessageSquare,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
@@ -47,26 +58,54 @@ export default function PatientLayout({
       <aside className="hidden md:flex bg-[#800000] text-white p-4 flex-col gap-3 md:sticky md:top-0 md:h-screen">
         <div className="text-lg font-semibold mb-2">{collapsed ? "W" : "WeCare"}</div>
         <nav className="flex-1 space-y-1">
-          <Link href="/dashboard/patient" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
-            <span className={collapsed ? "hidden" : "inline"}>Main Dashboard</span>
+          <Link
+            href="/dashboard/patient"
+            className={`flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40 ${collapsed ? "justify-center" : ""}`}
+          >
+            <LayoutDashboard className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Main Dashboard</span>}
           </Link>
-          <Link href="/dashboard/patient/appointments" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
-            <span className={collapsed ? "hidden" : "inline"}>Appointment Booking</span>
+          <Link
+            href="/dashboard/patient/appointments"
+            className={`flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40 ${collapsed ? "justify-center" : ""}`}
+          >
+            <CalendarCheck className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Appointment Booking</span>}
           </Link>
-          <Link href="/dashboard/patient/history" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
-            <span className={collapsed ? "hidden" : "inline"}>History of Booking</span>
+          <Link
+            href="/dashboard/patient/history"
+            className={`flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40 ${collapsed ? "justify-center" : ""}`}
+          >
+            <History className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {!collapsed && <span>History of Booking</span>}
           </Link>
-          <Link href="/dashboard/patient/e-vaccination-card" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
-            <span className={collapsed ? "hidden" : "inline"}>E-Vaccination Card</span>
+          <Link
+            href="/dashboard/patient/e-vaccination-card"
+            className={`flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40 ${collapsed ? "justify-center" : ""}`}
+          >
+            <Syringe className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {!collapsed && <span>E-Vaccination Card</span>}
           </Link>
-          <Link href="/dashboard/patient/profile" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
-            <span className={collapsed ? "hidden" : "inline"}>Profile Management</span>
+          <Link
+            href="/dashboard/patient/profile"
+            className={`flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40 ${collapsed ? "justify-center" : ""}`}
+          >
+            <UserCog className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Profile Management</span>}
           </Link>
-          <Link href="/dashboard/patient/about" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
-            <span className={collapsed ? "hidden" : "inline"}>About WeCare Clinic</span>
+          <Link
+            href="/dashboard/patient/about"
+            className={`flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40 ${collapsed ? "justify-center" : ""}`}
+          >
+            <Info className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {!collapsed && <span>About WeCare Clinic</span>}
           </Link>
-          <Link href="/dashboard/patient/messages" className="block px-3 py-2 rounded hover:bg-[#800000]/40">
-            <span className={collapsed ? "hidden" : "inline"}>Messages</span>
+          <Link
+            href="/dashboard/patient/messages"
+            className={`flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40 ${collapsed ? "justify-center" : ""}`}
+          >
+            <MessageSquare className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {!collapsed && <span>Messages</span>}
           </Link>
         </nav>
         <div className="mt-auto flex items-center justify-between">
@@ -98,26 +137,61 @@ export default function PatientLayout({
               </button>
             </div>
             <nav className="flex-1 space-y-1">
-              <Link href="/dashboard/patient" className="block px-3 py-2 rounded hover:bg-white/10" onClick={() => setDrawerOpen(false)}>
-                Main Dashboard
+              <Link
+                href="/dashboard/patient"
+                className="flex items-center gap-2 px-3 py-2 rounded hover:bg-white/10"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <LayoutDashboard className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span>Main Dashboard</span>
               </Link>
-              <Link href="/dashboard/patient/appointments" className="block px-3 py-2 rounded hover:bg-white/10" onClick={() => setDrawerOpen(false)}>
-                Appointment Booking
+              <Link
+                href="/dashboard/patient/appointments"
+                className="flex items-center gap-2 px-3 py-2 rounded hover:bg-white/10"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <CalendarCheck className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span>Appointment Booking</span>
               </Link>
-              <Link href="/dashboard/patient/history" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
-                History of Booking
+              <Link
+                href="/dashboard/patient/history"
+                className="flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <History className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span>History of Booking</span>
               </Link>
-              <Link href="/dashboard/patient/e-vaccination-card" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
-                E-Vaccination Card
+              <Link
+                href="/dashboard/patient/e-vaccination-card"
+                className="flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <Syringe className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span>E-Vaccination Card</span>
               </Link>
-              <Link href="/dashboard/patient/profile" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
-                Profile Management
+              <Link
+                href="/dashboard/patient/profile"
+                className="flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <UserCog className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span>Profile Management</span>
               </Link>
-              <Link href="/dashboard/patient/about" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
-                About WeCare Clinic
+              <Link
+                href="/dashboard/patient/about"
+                className="flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <Info className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span>About WeCare Clinic</span>
               </Link>
-              <Link href="/dashboard/patient/messages" className="block px-3 py-2 rounded hover:bg-[#800000]/40" onClick={() => setDrawerOpen(false)}>
-                Messages
+              <Link
+                href="/dashboard/patient/messages"
+                className="flex items-center gap-2 px-3 py-2 rounded hover:bg-[#800000]/40"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <MessageSquare className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span>Messages</span>
               </Link>
             </nav>
             <LogoutButton />
@@ -142,7 +216,6 @@ export default function PatientLayout({
           <NotificationsBell />
         </header>
         <main className="p-4 md:p-6 flex-1 overflow-y-auto">{children}</main>
-        <SiteFooter className="mt-auto" />
       </div>
     </div>
   );
