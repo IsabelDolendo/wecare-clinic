@@ -10,7 +10,6 @@ export async function POST(request: NextRequest) {
     // Extract common Twilio parameters
     const messageSid = formData.get('MessageSid') as string;
     const smsSid = formData.get('SmsSid') as string;
-    const accountSid = formData.get('AccountSid') as string;
     const from = formData.get('From') as string;
     const to = formData.get('To') as string;
     const body = formData.get('Body') as string;
