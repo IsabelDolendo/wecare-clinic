@@ -9,6 +9,7 @@ type Item = {
   description: string | null;
   stock: number;
   low_stock_threshold: number;
+  doses_per_vial: number;
   status: "active" | "inactive";
   expiration_date: string | null;
 };
@@ -50,10 +51,10 @@ export default function InventoryPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", stock: 0, low_stock_threshold: 10, expiration_date: "" });
+  const [form, setForm] = useState({ name: "", description: "", stock: 0, low_stock_threshold: 10, doses_per_vial: 1, expiration_date: "" });
   const [saving, setSaving] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "", stock: 0, expiration_date: "" });
+  const [editForm, setEditForm] = useState({ name: "", description: "", stock: 0, doses_per_vial: 1, expiration_date: "" });
   const [updating, setUpdating] = useState(false);
 
   const [showExpiryModal, setShowExpiryModal] = useState(false);
@@ -78,7 +79,7 @@ export default function InventoryPage() {
 
   const metrics = useMemo(() => {
     const totalItems = items.length;
-    const totalStock = items.reduce((sum, item) => sum + item.stock, 0);
+    const totalStock = items.reduce((sum, item) => sum + (item.stock * item.doses_per_vial), 0);
     const availableCount = items.filter((i) => i.status === "active").length;
     const unavailableCount = totalItems - availableCount;
     return { totalItems, totalStock, availableCount, unavailableCount };
@@ -110,7 +111,7 @@ export default function InventoryPage() {
 
       let query = supabase
         .from("inventory_items")
-        .select("id, name, description, stock, low_stock_threshold, status, expiration_date", { count: "exact" });
+        .select("id, name, description, stock, low_stock_threshold, doses_per_vial, status, expiration_date", { count: "exact" });
 
       if (statusParam !== "all") {
         query = query.eq("status", statusParam);
@@ -204,12 +205,13 @@ export default function InventoryPage() {
       description: form.description || null,
       stock: Number(form.stock) || 0,
       low_stock_threshold: Number(form.low_stock_threshold) || 10,
+      doses_per_vial: Number(form.doses_per_vial) || 1,
       status: "active",
       expiration_date: form.expiration_date || null,
     });
     setSaving(false);
     if (error) return setError(error.message);
-    setForm({ name: "", description: "", stock: 0, low_stock_threshold: 10, expiration_date: "" });
+    setForm({ name: "", description: "", stock: 0, low_stock_threshold: 10, doses_per_vial: 1, expiration_date: "" });
     if (page !== 1) setPage(1);
     await load({ page: 1 });
   }
@@ -225,6 +227,7 @@ export default function InventoryPage() {
       name: item.name,
       description: item.description ?? "",
       stock: item.stock,
+      doses_per_vial: item.doses_per_vial,
       expiration_date: item.expiration_date ? item.expiration_date.slice(0, 10) : "",
     });
     setEditingItem(item);
@@ -255,12 +258,14 @@ export default function InventoryPage() {
     const stock = Number.isFinite(parsedStock) ? Math.max(0, Math.round(parsedStock)) : editingItem.stock;
     const description = editForm.description.trim();
     const expiration_date = editForm.expiration_date ? editForm.expiration_date : null;
+    const doses_per_vial = Number(editForm.doses_per_vial) || 1;
     const { error } = await supabase
       .from("inventory_items")
       .update({
         name,
         description: description.length > 0 ? description : null,
         stock,
+        doses_per_vial,
         expiration_date,
       })
       .eq("id", editingItem.id);
@@ -375,7 +380,7 @@ export default function InventoryPage() {
           <p className="mt-2 text-2xl font-semibold text-blue-900">{metrics.totalItems}</p>
         </article>
         <article className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
-          <p className="text-xs uppercase tracking-wide text-emerald-700/80">Units In Stock</p>
+          <p className="text-xs uppercase tracking-wide text-emerald-700/80">Total Doses Available</p>
           <p className="mt-2 text-2xl font-semibold text-emerald-900">{metrics.totalStock}</p>
         </article>
         <article className="rounded-lg border border-green-200 bg-green-50/80 p-4 shadow-sm transition duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
@@ -395,7 +400,7 @@ export default function InventoryPage() {
             <p className="text-sm text-neutral-600">Keep your inventory up to date by logging newly received vaccines.</p>
           </div>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <label className="text-sm font-medium text-neutral-700">
             Name
             <input
@@ -419,9 +424,20 @@ export default function InventoryPage() {
             <input
               type="number"
               min={0}
+              step="0.1"
               className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
               value={form.stock}
               onChange={e=>setForm(f=>({...f,stock:Number(e.target.value)}))}
+            />
+          </label>
+          <label className="text-sm font-medium text-neutral-700">
+            Doses per vial
+            <input
+              type="number"
+              min={1}
+              className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
+              value={form.doses_per_vial}
+              onChange={e=>setForm(f=>({...f,doses_per_vial:Number(e.target.value)}))}
             />
           </label>
           <label className="text-sm font-medium text-neutral-700">
@@ -499,6 +515,7 @@ export default function InventoryPage() {
                       <th className="p-3 text-left font-medium text-neutral-600">Item</th>
                       <th className="p-3 text-left font-medium text-neutral-600">Description</th>
                       <th className="p-3 text-left font-medium text-neutral-600">In Stock</th>
+                      <th className="p-3 text-left font-medium text-neutral-600">Doses per Vial</th>
                       <th className="p-3 text-left font-medium text-neutral-600">Low Alert</th>
                       <th className="p-3 text-left font-medium text-neutral-600">Expiration</th>
                       <th className="p-3 text-left font-medium text-neutral-600">Availability</th>
@@ -527,6 +544,7 @@ export default function InventoryPage() {
                               <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">Low stock</span>
                             )}
                           </td>
+                          <td className="p-3 align-top text-neutral-600">{it.doses_per_vial}</td>
                           <td className="p-3 align-top text-neutral-600">{it.low_stock_threshold}</td>
                           <td className="p-3 align-top text-neutral-600">
                             <div className="flex flex-wrap items-center gap-2">
@@ -692,6 +710,18 @@ export default function InventoryPage() {
                   value={editForm.stock}
                   onChange={(e)=>setEditForm(f=>({...f, stock: Number(e.target.value)}))}
                   min={0}
+                  step="0.1"
+                  disabled={updating}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700">Doses per vial</label>
+                <input
+                  type="number"
+                  className="mt-1 w-full rounded-md border px-3 py-2"
+                  value={editForm.doses_per_vial}
+                  onChange={(e)=>setEditForm(f=>({...f, doses_per_vial: Number(e.target.value)}))}
+                  min={1}
                   disabled={updating}
                 />
               </div>

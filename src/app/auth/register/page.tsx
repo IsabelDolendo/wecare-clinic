@@ -65,7 +65,7 @@ export default function RegisterPage() {
       <div className="relative z-10 flex min-h-screen flex-col">
         {/* Form card */}
         <div className="flex flex-1 items-center justify-center p-4">
-          <div className="card w-full max-w-md overflow-hidden p-0">
+          <div className="card w-full max-w-md overflow-hidden p-0 rounded-xl">
             <div className="bg-brand-red p-6 md:p-7 flex items-center justify-center">
               <Image
                 src="/images/logo.jpg"

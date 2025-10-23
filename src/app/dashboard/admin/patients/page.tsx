@@ -10,18 +10,18 @@ type VaccRow = {
   dose_number: number;
   status: "scheduled" | "completed" | "cancelled";
   administered_at: string | null;
+  created_at: string;
 };
 
 type Profile = {
   id: string;
   full_name: string | null;
+  email: string | null;
   contact_number: string | null;
 };
 type InventoryItem = { id: string; name: string; stock: number };
 type AppointmentContact = { contact_number: string | null; appointment_id: string | null };
 type PatientSummary = { userId: string; maxDose: number; doses: VaccRow[] };
-
-const SMS_MAX_LENGTH = 320;
 
 export default function AdminPatientsPage() {
   const [vaccs, setVaccs] = useState<VaccRow[]>([]);
@@ -51,9 +51,33 @@ export default function AdminPatientsPage() {
   const summary = useMemo(() => {
     const list: { userId: string; maxDose: number; doses: VaccRow[] }[] = [];
     for (const [uid, rows] of byPatient.entries()) {
+      // Find the most recent vaccination cycle (group by appointment_id or find recent records)
+      // For now, consider all records as one ongoing cycle, but prioritize scheduled records for current progress
       const completed = rows.filter((r) => r.status === "completed");
-      const maxDose = completed.reduce((m, r) => Math.max(m, r.dose_number || 0), 0);
-      list.push({ userId: uid, maxDose, doses: completed.sort((a,b)=>a.dose_number-b.dose_number) });
+      const scheduled = rows.filter((r) => r.status === "scheduled");
+
+      // If there are scheduled doses, this indicates an active vaccination cycle
+      // Calculate progress based on completed doses within the current cycle
+      let maxDose = completed.reduce((m, r) => Math.max(m, r.dose_number || 0), 0);
+
+      // If patient has completed a full cycle (3 doses) but has scheduled doses,
+      // treat them as starting a new cycle (show as 0 doses completed for new cycle)
+      if (maxDose >= 3 && scheduled.length > 0) {
+        // Check if the scheduled dose is from a newer appointment (revaccination)
+        const latestScheduled = scheduled.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+        const latestCompleted = completed.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+
+        // If the latest scheduled record is newer than the latest completed record,
+        // this indicates a new vaccination cycle
+        if (!latestCompleted || new Date(latestScheduled.created_at || 0) > new Date(latestCompleted.created_at || 0)) {
+          maxDose = 0; // Reset progress for new cycle
+        }
+      }
+
+      // Include all doses (completed and scheduled) in the doses array
+      const allDoses = [...completed, ...scheduled].sort((a,b)=> (a.dose_number || 0) - (b.dose_number || 0));
+
+      list.push({ userId: uid, maxDose, doses: allDoses });
     }
     return list;
   }, [byPatient]);
@@ -79,8 +103,8 @@ export default function AdminPatientsPage() {
 
     const { data: vdata, error: verr } = await supabase
       .from("vaccinations")
-      .select("id, patient_user_id, vaccine_item_id, dose_number, status, administered_at")
-      .eq("status", "completed")
+      .select("id, patient_user_id, vaccine_item_id, dose_number, status, administered_at, created_at")
+      .in("status", ["completed", "scheduled"]) // Include both scheduled and completed
       .order("administered_at", { ascending: true });
 
     if (verr) {
@@ -99,7 +123,7 @@ export default function AdminPatientsPage() {
       const [profilesRes, appointmentsRes] = await Promise.all([
         supabase
           .from("profiles")
-          .select("id, full_name, contact_number")
+          .select("id, full_name, email, contact_number")
           .in("id", patientIds),
         supabase
           .from("appointments")
@@ -115,6 +139,7 @@ export default function AdminPatientsPage() {
           profileMap[p.id] = {
             id: p.id,
             full_name: p.full_name,
+            email: p.email,
             contact_number: p.contact_number,
           };
         });
@@ -217,27 +242,40 @@ export default function AdminPatientsPage() {
 
   async function submitSms() {
     if (!smsPatient) return;
-    const contact = getContactNumber(smsPatient.userId);
-    if (!contact) {
-      alert("No contact number available for this patient.");
-      return;
-    }
-    if (!smsMessage.trim()) {
-      alert("Message cannot be empty.");
-      return;
-    }
     setSmsSending(true);
     try {
-      const res = await fetch("/api/sms", {
+      // Get patient's email from profiles table
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", smsPatient.userId)
+        .single();
+
+      if (profileError || !profileData?.email) {
+        throw new Error("Could not retrieve patient's email address from profile");
+      }
+      const patientEmail = profileData.email;
+
+      // Send email
+      const emailResponse = await fetch("/api/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: contact, message: smsMessage.trim() }),
+        body: JSON.stringify({
+          to: patientEmail,
+          subject: "Vaccination Schedule Update - WeCare Clinic",
+          message: smsMessage.trim(),
+        }),
       });
-      if (!res.ok) throw new Error(await res.text());
+
+      if (!emailResponse.ok) {
+        const errorData = await emailResponse.json();
+        throw new Error(errorData.error || "Failed to send email");
+      }
+
       closeSms();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      alert(msg || "Failed to send SMS");
+      alert(msg || "Failed to send email");
       setSmsSending(false);
     }
   }
@@ -384,7 +422,7 @@ export default function AdminPatientsPage() {
                           className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
                           onClick={() => openSms(row)}
                         >
-                          Send SMS
+                          Send Email
                         </button>
                         <button
                           className="rounded-md bg-[#800000] px-3 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-[#660000] disabled:opacity-60"
@@ -506,7 +544,7 @@ export default function AdminPatientsPage() {
             <div className="max-h-[80vh] overflow-y-auto rounded-xl bg-white p-5 md:p-6 shadow-xl ring-1 ring-black/5 transition-transform duration-200 ease-out">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-semibold">Send SMS Update</h3>
+                  <h3 className="text-lg font-semibold">Send Email Update</h3>
                   <p className="text-sm text-neutral-600">Keep patients informed about their vaccination schedule.</p>
                 </div>
                 <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeSms}>×</button>
@@ -517,18 +555,16 @@ export default function AdminPatientsPage() {
                   <div className="text-neutral-600">{getContactNumber(smsPatient.userId) ?? "No contact available"}</div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700" htmlFor="sms-message">Message</label>
+                  <label className="block text-sm font-medium text-neutral-700" htmlFor="sms-message">Email Message</label>
                   <textarea
                     id="sms-message"
                     className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 min-h-32 resize-none shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
                     value={smsMessage}
-                    onChange={(e) => setSmsMessage(e.target.value.slice(0, SMS_MAX_LENGTH))}
-                    maxLength={SMS_MAX_LENGTH}
-                    placeholder="Type your SMS update here…"
+                    onChange={(e) => setSmsMessage(e.target.value)}
+                    placeholder="Type your email update here…"
                   />
                   <div className="mt-1 flex justify-between text-xs text-neutral-500">
                     <span>Share reminders or progress updates.</span>
-                    <span>{smsMessage.length}/{SMS_MAX_LENGTH}</span>
                   </div>
                 </div>
               </div>

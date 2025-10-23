@@ -23,12 +23,14 @@ export default function PatientHistoryPage() {
         total: 0,
         pending: 0,
         settled: 0,
+        cancelled: 0,
         lastUpdated: null as string | null,
       };
     }
 
     const pending = rows.filter((r) => r.status === "pending").length;
     const settled = rows.filter((r) => r.status === "settled").length;
+    const cancelled = rows.filter((r) => r.status === "cancelled").length;
     const lastCreated = rows
       .slice()
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]?.created_at ?? null;
@@ -37,6 +39,7 @@ export default function PatientHistoryPage() {
       total: rows.length,
       pending,
       settled,
+      cancelled,
       lastUpdated: lastCreated,
     };
   }, [rows]);
@@ -46,11 +49,26 @@ export default function PatientHistoryPage() {
     if (status === "pending") return "bg-yellow-50 text-yellow-800";
     if (status === "submitted") return "bg-neutral-200 text-neutral-800";
     if (status === "cancelled") return "bg-red-50 text-red-700";
+    if (status === "rescheduled") return "bg-purple-50 text-purple-700";
     return "bg-neutral-200 text-neutral-800";
   };
 
   const handleCancel = async (appointmentId: string) => {
     if (cancelingId === appointmentId) return;
+
+    // Get the appointment to check its current status
+    const appointment = rows.find(r => r.id === appointmentId);
+    if (!appointment) {
+      setError("Appointment not found");
+      return;
+    }
+
+    // Only allow cancelling submitted or pending appointments
+    if (appointment.status !== "submitted" && appointment.status !== "pending") {
+      setError("This appointment cannot be cancelled");
+      return;
+    }
+
     const confirmed = window.confirm("Are you sure you want to cancel this booking?");
     if (!confirmed) return;
 
@@ -67,17 +85,82 @@ export default function PatientHistoryPage() {
         return;
       }
 
-      const { error: updateError } = await supabase
-        .from("appointments")
-        .update({ status: "cancelled" })
-        .eq("id", appointmentId)
-        .eq("user_id", user.id);
+      console.log("User authenticated:", user.id);
 
-      if (updateError) {
-        throw updateError;
+      // Test database connectivity first
+      console.log("Testing database connectivity...");
+      const { data: testData, error: testError } = await supabase
+        .from("appointments")
+        .select("id, status")
+        .eq("id", appointmentId)
+        .eq("user_id", user.id)
+        .single();
+
+      if (testError) {
+        console.error("Database connectivity test failed:", testError);
+        throw new Error(`Database connection failed: ${testError.message}`);
       }
 
+      console.log("Database connectivity OK. Current appointment status:", testData?.status);
+
+      if (testData.status !== "submitted" && testData.status !== "pending") {
+        throw new Error("Appointment status has changed and can no longer be cancelled");
+      }
+
+      console.log("Attempting to cancel appointment:", appointmentId);
+
+      // Use database function to cancel appointment
+      const { data: cancelResult, error: cancelError } = await supabase.rpc('cancel_patient_appointment', {
+        appointment_id: appointmentId,
+        patient_id: user.id
+      });
+
+      if (cancelError) {
+        console.error("Database function error:", cancelError);
+        throw new Error(`Failed to cancel appointment: ${cancelError.message}`);
+      }
+
+      if (!cancelResult) {
+        throw new Error("Appointment cancellation failed - function returned false");
+      }
+
+      console.log("Database function successful for appointment:", appointmentId);
+
+      // Create notification for admins about cancellation using database function
+      const { error: notifyError } = await supabase.rpc('notify_admins_patient_cancelled', {
+        patient_id: user.id,
+        appointment_id: appointmentId
+      });
+
+      if (notifyError) {
+        console.error("Failed to send admin notification:", notifyError);
+        // Don't fail the cancellation just because notification failed
+      }
+
+      // Verify the update actually worked
+      console.log("Verifying database update...");
+      const { data: verifyData, error: verifyError } = await supabase
+        .from("appointments")
+        .select("id, status")
+        .eq("id", appointmentId)
+        .eq("user_id", user.id)
+        .single();
+
+      if (verifyError) {
+        console.error("Verification query failed:", verifyError);
+        throw new Error("Failed to verify database update");
+      }
+
+      console.log("Verification successful. Updated appointment status:", verifyData?.status);
+
+      if (verifyData?.status !== "cancelled") {
+        console.error("ERROR: Status was not updated to 'cancelled'. Current status:", verifyData?.status);
+        throw new Error("Database update verification failed - status not changed");
+      }
+
+      console.log("Updating local state...");
       setRows((prev) => prev.map((row) => (row.id === appointmentId ? { ...row, status: "cancelled" } : row)));
+      console.log("Local state updated successfully");
       setActionMessage("Booking cancelled successfully.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to cancel booking.");
@@ -103,9 +186,22 @@ export default function PatientHistoryPage() {
         .select("id, created_at, status, full_name")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
+
       if (!isMounted) return;
-      if (error) setError(error.message);
-      else setRows((data ?? []) as Row[]);
+
+      if (error) {
+        console.error("Error loading appointments:", error);
+        setError(error.message);
+      } else {
+        console.log("Appointments loaded successfully. Data:", data);
+        console.log("Appointment count:", data?.length || 0);
+        if (data && data.length > 0) {
+          data.forEach((appointment, index) => {
+            console.log(`Appointment ${index + 1}: ID=${appointment.id}, Status=${appointment.status}, Created=${appointment.created_at}`);
+          });
+        }
+        setRows((data ?? []) as Row[]);
+      }
       setLoading(false);
     })();
     return () => {
@@ -123,7 +219,7 @@ export default function PatientHistoryPage() {
           </p>
         </div>
         {stats.total > 0 && (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <div className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-center shadow-sm">
               <p className="text-xs uppercase tracking-wider text-neutral-500">Total Requests</p>
               <p className="text-lg font-semibold text-neutral-900">{stats.total}</p>
@@ -135,6 +231,10 @@ export default function PatientHistoryPage() {
             <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-center shadow-sm">
               <p className="text-xs uppercase tracking-wider text-green-700">Settled</p>
               <p className="text-lg font-semibold text-green-900">{stats.settled}</p>
+            </div>
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-center shadow-sm">
+              <p className="text-xs uppercase tracking-wider text-red-700">Cancelled</p>
+              <p className="text-lg font-semibold text-red-900">{stats.cancelled}</p>
             </div>
           </div>
         )}
@@ -195,8 +295,10 @@ export default function PatientHistoryPage() {
                       </span>
                     </td>
                     <td className="p-3">
-                      {r.status === "settled" || r.status === "cancelled" ? (
+                      {r.status === "settled" || r.status === "rescheduled" ? (
                         <span className="text-xs text-neutral-400">No actions available</span>
+                      ) : r.status === "cancelled" ? (
+                        <span className="text-xs text-neutral-400">Appointment cancelled</span>
                       ) : (
                         <button
                           type="button"
@@ -228,8 +330,10 @@ export default function PatientHistoryPage() {
                   Submitted {new Date(r.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
                 </p>
                 <div>
-                  {r.status === "settled" || r.status === "cancelled" ? (
+                  {r.status === "settled" || r.status === "rescheduled" ? (
                     <span className="text-xs text-neutral-400">No actions available</span>
+                  ) : r.status === "cancelled" ? (
+                    <span className="text-xs text-neutral-400">Appointment cancelled</span>
                   ) : (
                     <button
                       type="button"

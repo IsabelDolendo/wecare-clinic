@@ -37,16 +37,14 @@ type Appointment = {
   created_at: string;
 };
 
-const SMS_MAX_LENGTH = 320;
-
 export default function AdminAppointmentsPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-  const [smsMessage, setSmsMessage] = useState("");
-  const [smsSending, setSmsSending] = useState(false);
-  const [cancelAppointment, setCancelAppointment] = useState<Appointment | null>(null);
+  const [emailAppointment, setEmailAppointment] = useState<Appointment | null>(null);
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [cancelEmailAppointment, setCancelEmailAppointment] = useState<Appointment | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSending, setCancelSending] = useState(false);
   const [detailAppointment, setDetailAppointment] = useState<Appointment | null>(null);
@@ -89,26 +87,26 @@ export default function AdminAppointmentsPage() {
     }
   };
 
-  const openSmsModal = (appointment: Appointment) => {
-    setSelectedAppointment(appointment);
-    setSmsMessage(`Hello ${appointment.full_name}, this is WeCare Clinic regarding your appointment for animal bite treatment. Please come to our clinic at Zone 8, Bulan, Sorsogon for your vaccination schedule.`);
-    setSmsSending(false);
+  const openEmailModal = (appointment: Appointment) => {
+    setEmailAppointment(appointment);
+    setEmailMessage(`Hello ${appointment.full_name}, this is WeCare Clinic regarding your appointment for animal bite treatment. Please come to our clinic at Zone 8, Bulan, Sorsogon for your vaccination schedule.`);
+    setEmailSending(false);
   };
 
-  const closeSmsModal = () => {
-    setSelectedAppointment(null);
-    setSmsMessage("");
-    setSmsSending(false);
+  const closeEmailModal = () => {
+    setEmailAppointment(null);
+    setEmailMessage("");
+    setEmailSending(false);
   };
 
   const openCancelModal = (appointment: Appointment) => {
-    setCancelAppointment(appointment);
+    setCancelEmailAppointment(appointment);
     setCancelReason("Due to high patient volume, we are unable to accommodate your appointment at this time. Please reschedule for a later date.");
     setCancelSending(false);
   };
 
   const closeCancelModal = () => {
-    setCancelAppointment(null);
+    setCancelEmailAppointment(null);
     setCancelReason("");
     setCancelSending(false);
   };
@@ -121,24 +119,47 @@ export default function AdminAppointmentsPage() {
     setDetailAppointment(null);
   };
 
-  const sendCancelSmsAndUpdateAppointment = async () => {
-    if (!cancelAppointment || !cancelReason.trim()) return;
+  const sendCancelEmailAndUpdateAppointment = async () => {
+    if (!cancelEmailAppointment || !cancelReason.trim()) return;
 
     setCancelSending(true);
     try {
-      // Send cancellation SMS
-      const smsResponse = await fetch("/api/sms", {
+      // Get patient's email from profiles table
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", cancelEmailAppointment.user_id)
+        .single();
+
+      if (profileError || !profileData?.email) {
+        throw new Error("Could not retrieve patient's email address from profile");
+      }
+      const patientEmail = profileData.email;
+
+      // Send cancellation email
+      const emailResponse = await fetch("/api/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: cancelAppointment.contact_number,
-          message: `Dear ${cancelAppointment.full_name}, your appointment has been cancelled. Reason: ${cancelReason.trim()}. Please contact WeCare Clinic to reschedule.`,
+          to: patientEmail,
+          subject: "Appointment Cancellation - WeCare Clinic",
+          message: `Dear ${cancelEmailAppointment.full_name},
+
+Your appointment has been cancelled.
+
+Reason: ${cancelReason.trim()}
+
+Please contact WeCare Clinic to reschedule your appointment.
+
+Best regards,
+WeCare Clinic Team
+Zone 8, Bulan, Sorsogon`,
         }),
       });
 
-      if (!smsResponse.ok) {
-        const errorData = await smsResponse.json();
-        throw new Error(errorData.error || "Failed to send SMS");
+      if (!emailResponse.ok) {
+        const errorData = await emailResponse.json();
+        throw new Error(errorData.error || "Failed to send email");
       }
 
       // Update appointment status to cancelled
@@ -148,16 +169,16 @@ export default function AdminAppointmentsPage() {
           status: "cancelled",
           settled_at: new Date().toISOString()
         })
-        .eq("id", cancelAppointment.id);
+        .eq("id", cancelEmailAppointment.id);
 
       if (updateError) throw updateError;
 
       // Create notification for patient
       await supabase.from("notifications").insert({
-        user_id: cancelAppointment.user_id,
+        user_id: cancelEmailAppointment.user_id,
         type: "appointment_update",
         payload: {
-          appointment_id: cancelAppointment.id,
+          appointment_id: cancelEmailAppointment.id,
           status: "cancelled",
           message: `Your appointment has been cancelled. Reason: ${cancelReason.trim()}`,
         },
@@ -167,29 +188,81 @@ export default function AdminAppointmentsPage() {
       await loadAppointments();
       closeCancelModal();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to send cancellation SMS and update appointment");
+      alert(err instanceof Error ? err.message : "Failed to send cancellation email and update appointment");
       setCancelSending(false);
     }
   };
 
-  const sendSmsAndSettleAppointment = async () => {
-    if (!selectedAppointment || !smsMessage.trim()) return;
+  const sendEmailAndSettleAppointment = async () => {
+    if (!emailAppointment || !emailMessage.trim()) return;
 
-    setSmsSending(true);
+    setEmailSending(true);
     try {
-      // Send SMS
-      const smsResponse = await fetch("/api/sms", {
+      // Get patient's email from profiles table
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", emailAppointment.user_id)
+        .single();
+
+      if (profileError || !profileData?.email) {
+        throw new Error("Could not retrieve patient's email address from profile");
+      }
+      const patientEmail = profileData.email;
+
+      // Send email
+      const emailResponse = await fetch("/api/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: selectedAppointment.contact_number,
-          message: smsMessage.trim(),
+          to: patientEmail,
+          subject: "Appointment Confirmation - WeCare Clinic",
+          message: emailMessage.trim(),
         }),
       });
 
-      if (!smsResponse.ok) {
-        const errorData = await smsResponse.json();
-        throw new Error(errorData.error || "Failed to send SMS");
+      if (!emailResponse.ok) {
+        const errorData = await emailResponse.json();
+        throw new Error(errorData.error || "Failed to send email");
+      }
+
+      // Check if patient already has vaccination records
+      const { data: existingVaccinations, error: checkError } = await supabase
+        .from("vaccinations")
+        .select("dose_number, status")
+        .eq("patient_user_id", emailAppointment.user_id);
+
+      if (checkError) throw checkError;
+
+      // Calculate max completed dose
+      const completedDoses = (existingVaccinations ?? []).filter(v => v.status === "completed");
+      const maxCompletedDose = completedDoses.length > 0 ? Math.max(...completedDoses.map(v => v.dose_number || 0)) : 0;
+
+      // Allow vaccination tracking if:
+      // 1. No existing records (new patient)
+      // 2. Previous vaccination cycle completed (maxDose >= 3)
+      const shouldCreateVaccinationRecord = existingVaccinations.length === 0 || maxCompletedDose >= 3;
+
+      if (shouldCreateVaccinationRecord) {
+        // Create initial vaccination tracking record for the patient
+        // This ensures the patient appears in the Patient List and Management page
+        const { error: vaccTrackError } = await supabase
+          .from("vaccinations")
+          .insert({
+            patient_user_id: emailAppointment.user_id,
+            appointment_id: emailAppointment.id,
+            vaccine_item_id: null, // No vaccine administered yet
+            dose_number: 1, // First dose - scheduled but not administered
+            status: "scheduled", // Patient is scheduled for first vaccination
+            administered_at: null, // No administration date yet
+          });
+
+        if (vaccTrackError) {
+          // Only throw error if it's not a duplicate (patient might already be in progress)
+          if (!vaccTrackError.message.includes('duplicate key')) {
+            throw vaccTrackError;
+          }
+        }
       }
 
       // Update appointment status to settled
@@ -199,27 +272,27 @@ export default function AdminAppointmentsPage() {
           status: "settled",
           settled_at: new Date().toISOString()
         })
-        .eq("id", selectedAppointment.id);
+        .eq("id", emailAppointment.id);
 
       if (updateError) throw updateError;
 
       // Create notification for patient
       await supabase.from("notifications").insert({
-        user_id: selectedAppointment.user_id,
+        user_id: emailAppointment.user_id,
         type: "appointment_update",
         payload: {
-          appointment_id: selectedAppointment.id,
+          appointment_id: emailAppointment.id,
           status: "settled",
-          message: "Your appointment has been processed and SMS notification sent.",
+          message: "Your appointment has been processed and email notification sent.",
         },
       });
 
       // Refresh the appointments list
       await loadAppointments();
-      closeSmsModal();
+      closeEmailModal();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to send SMS and update appointment");
-      setSmsSending(false);
+      alert(err instanceof Error ? err.message : "Failed to send email and update appointment");
+      setEmailSending(false);
     }
   };
 
@@ -232,7 +305,7 @@ export default function AdminAppointmentsPage() {
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Appointment Management</h2>
-          <p className="text-sm text-neutral-600">Manage pending appointments and send SMS notifications to patients.</p>
+          <p className="text-sm text-neutral-600">Manage pending appointments and send email notifications to patients.</p>
         </div>
         {loading && <span className="text-sm text-neutral-500">Loading appointments…</span>}
       </header>
@@ -245,7 +318,7 @@ export default function AdminAppointmentsPage() {
         <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Pending Appointments</h3>
-            <p className="text-sm text-neutral-600">Appointments awaiting processing and SMS notification.</p>
+            <p className="text-sm text-neutral-600">Appointments awaiting processing and email notification.</p>
           </div>
         </div>
 
@@ -265,7 +338,7 @@ export default function AdminAppointmentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-200">
-                {appointments.map((appointment) => (
+                {appointments.map((appointment: Appointment) => (
                   <tr key={appointment.id} className="bg-white">
                     <td className="p-3 font-medium text-neutral-900">{appointment.full_name}</td>
                     <td className="p-3 text-neutral-600">{appointment.contact_number}</td>
@@ -290,18 +363,22 @@ export default function AdminAppointmentsPage() {
                         >
                           View Details
                         </button>
-                        <button
-                          className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
-                          onClick={() => openSmsModal(appointment)}
-                        >
-                          Send SMS
-                        </button>
-                        <button
-                          className="rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-red-700"
-                          onClick={() => openCancelModal(appointment)}
-                        >
-                          Cancel
-                        </button>
+                        {appointment.status !== "cancelled" && (
+                          <>
+                            <button
+                              className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
+                              onClick={() => openEmailModal(appointment)}
+                            >
+                              Send Email
+                            </button>
+                            <button
+                              className="rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-red-700"
+                              onClick={() => openCancelModal(appointment)}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -312,55 +389,49 @@ export default function AdminAppointmentsPage() {
         )}
       </section>
 
-      {/* SMS Modal */}
-      {selectedAppointment && (
+      {/* Email Modal */}
+      {emailAppointment && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={closeSmsModal} />
+          <div className="absolute inset-0 bg-black/40" onClick={closeEmailModal} />
           <div className="relative z-10 mx-auto mt-10 max-w-xl w-[calc(100%-2rem)]">
             <div className="max-h-[80vh] overflow-y-auto rounded-xl bg-white p-5 md:p-6 shadow-xl ring-1 ring-black/5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-semibold">Send SMS & Process Appointment</h3>
-                  <p className="text-sm text-neutral-600">Send SMS notification and mark appointment as settled.</p>
+                  <h3 className="text-lg font-semibold">Send Email & Process Appointment</h3>
+                  <p className="text-sm text-neutral-600">Send email notification and mark appointment as settled.</p>
                 </div>
-                <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeSmsModal}>×</button>
+                <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeEmailModal}>×</button>
               </div>
               <div className="mt-4 space-y-3 text-sm">
                 <div className="rounded-md border border-neutral-200 bg-neutral-50/80 p-3">
-                  <div className="font-medium text-neutral-900">{selectedAppointment.full_name}</div>
-                  <div className="text-neutral-600">{selectedAppointment.contact_number}</div>
-                  <div className="text-neutral-600">Category: {selectedAppointment.category} | Animal: {selectedAppointment.animal}</div>
+                  <div className="font-medium text-neutral-900">{emailAppointment.full_name}</div>
+                  <div className="text-neutral-600">Category: {emailAppointment.category} | Animal: {emailAppointment.animal}</div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700" htmlFor="sms-message">SMS Message</label>
+                  <label className="block text-sm font-medium text-neutral-700" htmlFor="email-message">Email Message</label>
                   <textarea
-                    id="sms-message"
+                    id="email-message"
                     className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 min-h-32 resize-none shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
-                    value={smsMessage}
-                    onChange={(e) => setSmsMessage(e.target.value.slice(0, SMS_MAX_LENGTH))}
-                    maxLength={SMS_MAX_LENGTH}
-                    placeholder="Type your SMS message here…"
+                    value={emailMessage}
+                    onChange={(e) => setEmailMessage(e.target.value)}
+                    placeholder="Type your email message here…"
                   />
-                  <div className="mt-1 flex justify-between text-xs text-neutral-500">
-                    <span>Send appointment confirmation and vaccination schedule.</span>
-                    <span>{smsMessage.length}/{SMS_MAX_LENGTH}</span>
-                  </div>
                 </div>
               </div>
               <div className="mt-5 flex justify-end gap-2">
                 <button
                   className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
-                  onClick={closeSmsModal}
-                  disabled={smsSending}
+                  onClick={closeEmailModal}
+                  disabled={emailSending}
                 >
                   Cancel
                 </button>
                 <button
                   className="rounded-md bg-[#800000] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#660000] disabled:opacity-60"
-                  onClick={sendSmsAndSettleAppointment}
-                  disabled={smsSending || smsMessage.trim().length === 0}
+                  onClick={sendEmailAndSettleAppointment}
+                  disabled={emailSending || emailMessage.trim().length === 0}
                 >
-                  {smsSending ? "Sending & Processing…" : "Send SMS & Settle Appointment"}
+                  {emailSending ? "Sending & Processing…" : "Send Email & Settle Appointment"}
                 </button>
               </div>
             </div>
@@ -369,7 +440,7 @@ export default function AdminAppointmentsPage() {
       )}
 
       {/* Cancel Modal */}
-      {cancelAppointment && (
+      {cancelEmailAppointment && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={closeCancelModal} />
           <div className="relative z-10 mx-auto mt-10 max-w-xl w-[calc(100%-2rem)]">
@@ -377,15 +448,14 @@ export default function AdminAppointmentsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold">Cancel Appointment & Send Notification</h3>
-                  <p className="text-sm text-neutral-600">Cancel the appointment and notify the patient via SMS.</p>
+                  <p className="text-sm text-neutral-600">Cancel the appointment and notify the patient via email.</p>
                 </div>
                 <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeCancelModal}>×</button>
               </div>
               <div className="mt-4 space-y-3 text-sm">
                 <div className="rounded-md border border-neutral-200 bg-neutral-50/80 p-3">
-                  <div className="font-medium text-neutral-900">{cancelAppointment.full_name}</div>
-                  <div className="text-neutral-600">{cancelAppointment.contact_number}</div>
-                  <div className="text-neutral-600">Category: {cancelAppointment.category} | Animal: {cancelAppointment.animal}</div>
+                  <div className="font-medium text-neutral-900">{cancelEmailAppointment.full_name}</div>
+                  <div className="text-neutral-600">Category: {cancelEmailAppointment.category} | Animal: {cancelEmailAppointment.animal}</div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700" htmlFor="cancel-reason">Cancellation Reason</label>
@@ -393,14 +463,9 @@ export default function AdminAppointmentsPage() {
                     id="cancel-reason"
                     className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 min-h-24 resize-none shadow-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                     value={cancelReason}
-                    onChange={(e) => setCancelReason(e.target.value.slice(0, SMS_MAX_LENGTH))}
-                    maxLength={SMS_MAX_LENGTH}
+                    onChange={(e) => setCancelReason(e.target.value)}
                     placeholder="Please provide a reason for cancelling this appointment…"
                   />
-                  <div className="mt-1 flex justify-between text-xs text-neutral-500">
-                    <span>Explain the reason for cancellation to the patient.</span>
-                    <span>{cancelReason.length}/{SMS_MAX_LENGTH}</span>
-                  </div>
                 </div>
               </div>
               <div className="mt-5 flex justify-end gap-2">
@@ -413,10 +478,10 @@ export default function AdminAppointmentsPage() {
                 </button>
                 <button
                   className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700 disabled:opacity-60"
-                  onClick={sendCancelSmsAndUpdateAppointment}
+                  onClick={sendCancelEmailAndUpdateAppointment}
                   disabled={cancelSending || cancelReason.trim().length === 0}
                 >
-                  {cancelSending ? "Sending & Cancelling…" : "Cancel Appointment & Send SMS"}
+                  {cancelSending ? "Sending & Cancelling…" : "Cancel Appointment & Send Email"}
                 </button>
               </div>
             </div>

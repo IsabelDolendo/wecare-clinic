@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   role user_role NOT NULL DEFAULT 'patient',
   full_name text,
+  email text,
   phone text,
   avatar_url text,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -65,11 +66,12 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO public.profiles (id, role, full_name)
+  INSERT INTO public.profiles (id, role, full_name, email)
   VALUES (
     NEW.id,
     COALESCE(NULLIF(NEW.raw_user_meta_data->>'role','')::user_role, 'patient'),
-    NULLIF(NEW.raw_user_meta_data->>'full_name','')
+    NULLIF(NEW.raw_user_meta_data->>'full_name',''),
+    NEW.email
   )
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
@@ -83,10 +85,11 @@ FOR EACH ROW
 EXECUTE FUNCTION public.handle_new_auth_user();
 
 -- Backfill profiles for existing auth users (safe to run multiple times)
-INSERT INTO public.profiles (id, role, full_name)
+INSERT INTO public.profiles (id, role, full_name, email)
 SELECT u.id,
        COALESCE(NULLIF(u.raw_user_meta_data->>'role','')::user_role, 'patient'),
-       NULLIF(u.raw_user_meta_data->>'full_name','')
+       NULLIF(u.raw_user_meta_data->>'full_name',''),
+       u.email
 FROM auth.users u
 WHERE NOT EXISTS (
   SELECT 1 FROM public.profiles p WHERE p.id = u.id
@@ -96,8 +99,9 @@ CREATE TABLE IF NOT EXISTS public.inventory_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
   description text,
-  stock integer NOT NULL DEFAULT 0,
+  stock decimal(10,2) NOT NULL DEFAULT 0,
   low_stock_threshold integer NOT NULL DEFAULT 10,
+  doses_per_vial integer NOT NULL DEFAULT 1,
     
   status inventory_status NOT NULL DEFAULT 'active',
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -169,9 +173,23 @@ FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
 -- Decrement inventory when a vaccination is marked completed
 CREATE OR REPLACE FUNCTION public.decrement_inventory_on_completed_vaccination()
 RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  doses_per_vial_val integer;
 BEGIN
   IF NEW.status = 'completed' AND NEW.vaccine_item_id IS NOT NULL THEN
-    UPDATE public.inventory_items SET stock = GREATEST(stock - 1, 0)
+    -- Get the doses_per_vial value for this vaccine
+    SELECT doses_per_vial INTO doses_per_vial_val
+    FROM public.inventory_items
+    WHERE id = NEW.vaccine_item_id;
+
+    -- If doses_per_vial is not set or is 0, default to 1
+    IF doses_per_vial_val IS NULL OR doses_per_vial_val <= 0 THEN
+      doses_per_vial_val := 1;
+    END IF;
+
+    -- Decrement stock by 1/doses_per_vial (fractional decrement for multi-dose vials)
+    UPDATE public.inventory_items
+    SET stock = GREATEST(stock - (1.0 / doses_per_vial_val), 0)
     WHERE id = NEW.vaccine_item_id;
   END IF;
   RETURN NEW;
@@ -181,9 +199,109 @@ DROP TRIGGER IF EXISTS trg_vaccinations_decrement ON public.vaccinations;
 CREATE TRIGGER trg_vaccinations_decrement AFTER INSERT OR UPDATE OF status ON public.vaccinations
 FOR EACH ROW EXECUTE FUNCTION public.decrement_inventory_on_completed_vaccination();
 
--- Notifications automation ----------------------------------------------------
--- 1) Notify all admins when a new appointment is created
-create or replace function public.notify_admin_on_appointment_insert()
+-- Function for patients to notify admins about appointment cancellations
+CREATE OR REPLACE FUNCTION public.notify_admins_patient_cancelled(
+  patient_id uuid,
+  appointment_id uuid
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  admin_rec record;
+  patient_email text;
+BEGIN
+  -- Get patient email
+  SELECT email INTO patient_email
+  FROM profiles
+  WHERE id = patient_id;
+
+  -- Create notifications for all admins
+  FOR admin_rec IN SELECT id FROM profiles WHERE role = 'admin' LOOP
+    INSERT INTO notifications (user_id, type, payload)
+    VALUES (
+      admin_rec.id,
+      'appointment_update',
+      jsonb_build_object(
+        'message', 'Patient ' || COALESCE(patient_email, 'Unknown') || ' has cancelled their appointment.',
+        'action', 'patient_cancelled',
+        'patient_id', patient_id,
+        'appointment_id', appointment_id
+      )
+    );
+  END LOOP;
+-- Function for patients to notify admins about appointment reschedule requests
+CREATE OR REPLACE FUNCTION public.notify_admins_patient_reschedule(
+  patient_id uuid,
+  appointment_id uuid
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  admin_rec record;
+  patient_email text;
+BEGIN
+  -- Get patient email
+  SELECT email INTO patient_email
+  FROM profiles
+  WHERE id = patient_id;
+
+  -- Create notifications for all admins
+  FOR admin_rec IN SELECT id FROM profiles WHERE role = 'admin' LOOP
+    INSERT INTO notifications (user_id, type, payload)
+    VALUES (
+      admin_rec.id,
+      'appointment_update',
+      jsonb_build_object(
+        'message', 'Patient ' || COALESCE(patient_email, 'Unknown') || ' is requesting to reschedule a cancelled appointment.',
+        'action', 'reschedule_request',
+        'patient_id', patient_id,
+        'appointment_id', appointment_id
+      )
+    );
+  END LOOP;
+END;
+$$;
+-- Function for patients to cancel their own appointments
+CREATE OR REPLACE FUNCTION public.cancel_patient_appointment(
+  appointment_id uuid,
+  patient_id uuid
+)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  current_status text;
+BEGIN
+  -- Get current status and verify ownership
+  SELECT status INTO current_status
+  FROM appointments
+  WHERE id = appointment_id AND user_id = patient_id;
+
+  -- Check if appointment exists and belongs to patient
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Appointment not found or access denied';
+  END IF;
+
+  -- Check if appointment can be cancelled
+  IF current_status NOT IN ('submitted', 'pending') THEN
+    RAISE EXCEPTION 'Appointment cannot be cancelled - current status: %', current_status;
+  END IF;
+
+  -- Update the appointment status
+  UPDATE appointments
+  SET status = 'cancelled'
+  WHERE id = appointment_id AND user_id = patient_id;
+
+  -- Check if update was successful
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Failed to update appointment status';
+  END IF;
+
+  RETURN true;
+END;
+$$;
 returns trigger
 language plpgsql
 security definer
