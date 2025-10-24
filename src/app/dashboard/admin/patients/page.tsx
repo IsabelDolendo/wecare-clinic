@@ -7,6 +7,7 @@ type VaccRow = {
   id: string;
   patient_user_id: string;
   vaccine_item_id: string | null;
+  appointment_id: string | null;
   dose_number: number;
   status: "scheduled" | "completed" | "cancelled";
   administered_at: string | null;
@@ -20,15 +21,15 @@ type Profile = {
   contact_number: string | null;
 };
 type InventoryItem = { id: string; name: string; stock: number };
-type AppointmentContact = { contact_number: string | null; appointment_id: string | null };
-type PatientSummary = { userId: string; maxDose: number; doses: VaccRow[] };
+type AppointmentInfo = { id: string; contact_number: string | null; created_at: string; full_name: string };
+type PatientSummary = { apptId: string; userId: string; maxDose: number; doses: VaccRow[] };
 
 export default function AdminPatientsPage() {
   const [vaccs, setVaccs] = useState<VaccRow[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [itemNames, setItemNames] = useState<Record<string, string>>({});
   const [availableItems, setAvailableItems] = useState<InventoryItem[]>([]);
-  const [appointmentContacts, setAppointmentContacts] = useState<Record<string, AppointmentContact>>({});
+  const [appointmentContacts, setAppointmentContacts] = useState<Record<string, AppointmentInfo[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewPatient, setViewPatient] = useState<PatientSummary | null>(null);
@@ -39,48 +40,28 @@ export default function AdminPatientsPage() {
   const [vaccItemId, setVaccItemId] = useState<string | null>(null);
   const [vaccProcessing, setVaccProcessing] = useState(false);
 
-  const byPatient = useMemo(() => {
+  const byAppointment = useMemo(() => {
     const map = new Map<string, VaccRow[]>();
     for (const v of vaccs) {
-      if (!map.has(v.patient_user_id)) map.set(v.patient_user_id, []);
-      map.get(v.patient_user_id)!.push(v);
+      if (v.appointment_id) {
+        if (!map.has(v.appointment_id)) map.set(v.appointment_id, []);
+        map.get(v.appointment_id)!.push(v);
+      }
     }
     return map;
   }, [vaccs]);
 
   const summary = useMemo(() => {
-    const list: { userId: string; maxDose: number; doses: VaccRow[] }[] = [];
-    for (const [uid, rows] of byPatient.entries()) {
-      // Find the most recent vaccination cycle (group by appointment_id or find recent records)
-      // For now, consider all records as one ongoing cycle, but prioritize scheduled records for current progress
+    const list: PatientSummary[] = [];
+    for (const [apptId, rows] of byAppointment.entries()) {
+      const userId = rows[0].patient_user_id;
       const completed = rows.filter((r) => r.status === "completed");
-      const scheduled = rows.filter((r) => r.status === "scheduled");
-
-      // If there are scheduled doses, this indicates an active vaccination cycle
-      // Calculate progress based on completed doses within the current cycle
-      let maxDose = completed.reduce((m, r) => Math.max(m, r.dose_number || 0), 0);
-
-      // If patient has completed a full cycle (3 doses) but has scheduled doses,
-      // treat them as starting a new cycle (show as 0 doses completed for new cycle)
-      if (maxDose >= 3 && scheduled.length > 0) {
-        // Check if the scheduled dose is from a newer appointment (revaccination)
-        const latestScheduled = scheduled.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
-        const latestCompleted = completed.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
-
-        // If the latest scheduled record is newer than the latest completed record,
-        // this indicates a new vaccination cycle
-        if (!latestCompleted || new Date(latestScheduled.created_at || 0) > new Date(latestCompleted.created_at || 0)) {
-          maxDose = 0; // Reset progress for new cycle
-        }
-      }
-
-      // Include all doses (completed and scheduled) in the doses array
-      const allDoses = [...completed, ...scheduled].sort((a,b)=> (a.dose_number || 0) - (b.dose_number || 0));
-
-      list.push({ userId: uid, maxDose, doses: allDoses });
+      const maxDose = completed.reduce((m, r) => Math.max(m, r.dose_number || 0), 0);
+      const allDoses = rows.sort((a, b) => (a.dose_number || 0) - (b.dose_number || 0));
+      list.push({ apptId, userId, maxDose, doses: allDoses });
     }
     return list;
-  }, [byPatient]);
+  }, [byAppointment]);
 
   const inProgress = summary.filter((s) => s.maxDose < 3);
   const fully = summary.filter((s) => s.maxDose >= 3);
@@ -103,7 +84,7 @@ export default function AdminPatientsPage() {
 
     const { data: vdata, error: verr } = await supabase
       .from("vaccinations")
-      .select("id, patient_user_id, vaccine_item_id, dose_number, status, administered_at, created_at")
+      .select("id, patient_user_id, vaccine_item_id, appointment_id, dose_number, status, administered_at, created_at")
       .in("status", ["completed", "scheduled"]) // Include both scheduled and completed
       .order("administered_at", { ascending: true });
 
@@ -117,7 +98,7 @@ export default function AdminPatientsPage() {
     const patientIds = Array.from(new Set(vv.map((v) => v.patient_user_id)));
 
     const profileMap: Record<string, Profile> = {};
-    const contactMap: Record<string, AppointmentContact> = {};
+    let appointmentMap: Record<string, AppointmentInfo[]> = {};
 
     if (patientIds.length > 0) {
       const [profilesRes, appointmentsRes] = await Promise.all([
@@ -127,7 +108,7 @@ export default function AdminPatientsPage() {
           .in("id", patientIds),
         supabase
           .from("appointments")
-          .select("id, user_id, contact_number, created_at")
+          .select("id, user_id, contact_number, created_at, full_name")
           .in("user_id", patientIds)
           .order("created_at", { ascending: false }),
       ]);
@@ -148,20 +129,21 @@ export default function AdminPatientsPage() {
       if (appointmentsRes.error) {
         errorMessage = errorMessage ?? appointmentsRes.error.message;
       } else {
-        const seen = new Set<string>();
-        (appointmentsRes.data as { id: string; user_id: string; contact_number: string | null }[] | null)?.forEach((appt) => {
-          if (seen.has(appt.user_id)) return;
-          contactMap[appt.user_id] = {
-            contact_number: appt.contact_number ?? null,
-            appointment_id: appt.id,
-          };
-          seen.add(appt.user_id);
+        appointmentMap = {};
+        (appointmentsRes.data as { id: string; user_id: string; contact_number: string | null; created_at: string; full_name: string }[] | null)?.forEach((appt) => {
+          if (!appointmentMap[appt.user_id]) appointmentMap[appt.user_id] = [];
+          appointmentMap[appt.user_id].push({
+            id: appt.id,
+            contact_number: appt.contact_number,
+            created_at: appt.created_at,
+            full_name: appt.full_name,
+          });
         });
       }
     }
 
-    setProfiles(profileMap);
-    setAppointmentContacts(contactMap);
+    if (!appointmentMap) appointmentMap = {};
+    setAppointmentContacts(appointmentMap);
 
     const itemIds = Array.from(new Set(vv.map((v) => v.vaccine_item_id).filter(Boolean))) as string[];
     const nameMap: Record<string, string> = {};
@@ -220,10 +202,17 @@ export default function AdminPatientsPage() {
 
   const formatDate = (value: string | null) => (value ? new Date(value).toLocaleString() : "—");
 
-  const getProfileName = (userId: string) => profiles[userId]?.full_name ?? userId.substring(0, 6);
+  const getProfileName = (userId: string) => {
+    const appts = appointmentContacts[userId] || [];
+    const latest = appts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    return latest?.full_name || "Unknown Patient";
+  };
 
-  const getContactNumber = (userId: string) =>
-    appointmentContacts[userId]?.contact_number ?? profiles[userId]?.contact_number ?? null;
+  const getContactNumber = (userId: string) => {
+    const appts = appointmentContacts[userId] || [];
+    const latest = appts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    return latest?.contact_number ?? profiles[userId]?.contact_number ?? null;
+  };
 
   const openView = (summary: PatientSummary) => setViewPatient(summary);
   const closeView = () => setViewPatient(null);
@@ -307,7 +296,7 @@ export default function AdminPatientsPage() {
     try {
       const { error: insertErr } = await supabase.from("vaccinations").insert({
         patient_user_id: vaccPatient.userId,
-        appointment_id: appointmentContacts[vaccPatient.userId]?.appointment_id ?? null,
+        appointment_id: vaccPatient.apptId,
         vaccine_item_id: item.id,
         dose_number: nextDose,
         status: "completed",
@@ -345,8 +334,8 @@ export default function AdminPatientsPage() {
     <div className="space-y-6">
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Patients</h2>
-          <p className="text-sm text-neutral-600">Track vaccination progress, reach out to patients, and record completed doses.</p>
+          <h2 className="text-xl font-semibold">Appointments</h2>
+          <p className="text-sm text-neutral-600">Track vaccination progress per appointment, reach out to patients, and record completed doses.</p>
         </div>
         {loading && <span className="text-sm text-neutral-500">Syncing latest records…</span>}
       </header>
@@ -357,7 +346,7 @@ export default function AdminPatientsPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-lg border border-blue-200 bg-blue-50/80 p-4 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
-          <p className="text-xs uppercase tracking-wide text-blue-700/80">Total Patients</p>
+          <p className="text-xs uppercase tracking-wide text-blue-700/80">Total Appointments</p>
           <p className="mt-2 text-2xl font-semibold text-blue-900">{metrics.totalPatients}</p>
         </article>
         <article className="rounded-lg border border-amber-200 bg-amber-50/80 p-4 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
@@ -377,7 +366,7 @@ export default function AdminPatientsPage() {
       <section className="space-y-4 rounded-lg border border-neutral-200 bg-white/80 p-5 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-lg">
         <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900">In-progress patients</h3>
+            <h3 className="text-lg font-semibold text-neutral-900">In-progress appointments</h3>
             <p className="text-sm text-neutral-600">Dose completion under 3/3.</p>
           </div>
           {availableItems.length === 0 && (
@@ -402,7 +391,7 @@ export default function AdminPatientsPage() {
               </thead>
               <tbody className="divide-y divide-neutral-200">
                 {inProgress.map((row) => (
-                  <tr key={row.userId} className="bg-white">
+                  <tr key={row.apptId} className="bg-white">
                     <td className="p-3 font-medium text-neutral-900">{getProfileName(row.userId)}</td>
                     <td className="p-3 text-neutral-600">{getContactNumber(row.userId) ?? "—"}</td>
                     <td className="p-3">
@@ -445,17 +434,17 @@ export default function AdminPatientsPage() {
       <section className="space-y-4 rounded-lg border border-neutral-200 bg-white/80 p-5 shadow-sm">
         <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900">Fully vaccinated patients</h3>
+            <h3 className="text-lg font-semibold text-neutral-900">Completed appointments</h3>
             <p className="text-sm text-neutral-600">Completed 3/3 doses.</p>
           </div>
         </div>
         {fully.length === 0 ? (
-          <p className="text-sm text-neutral-600">No fully vaccinated patients.</p>
+          <p className="text-sm text-neutral-600">No completed appointments.</p>
         ) : (
           <div className="grid gap-2">
             {fully.map((r) => (
               <button
-                key={r.userId}
+                key={r.apptId}
                 type="button"
                 onClick={() => openView(r)}
                 className="w-full rounded-lg border border-green-200 bg-white px-4 py-3 text-left shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-300"

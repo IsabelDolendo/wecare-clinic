@@ -175,6 +175,7 @@ CREATE OR REPLACE FUNCTION public.decrement_inventory_on_completed_vaccination()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   doses_per_vial_val integer;
+  completed_count bigint;
 BEGIN
   IF NEW.status = 'completed' AND NEW.vaccine_item_id IS NOT NULL THEN
     -- Get the doses_per_vial value for this vaccine
@@ -187,10 +188,17 @@ BEGIN
       doses_per_vial_val := 1;
     END IF;
 
-    -- Decrement stock by 1/doses_per_vial (fractional decrement for multi-dose vials)
-    UPDATE public.inventory_items
-    SET stock = GREATEST(stock - (1.0 / doses_per_vial_val), 0)
-    WHERE id = NEW.vaccine_item_id;
+    -- Count the number of completed vaccinations for this item
+    SELECT count(*) INTO completed_count
+    FROM public.vaccinations
+    WHERE vaccine_item_id = NEW.vaccine_item_id AND status = 'completed';
+
+    -- Deduct 1 vial if the count is a multiple of doses_per_vial
+    IF completed_count % doses_per_vial_val = 0 THEN
+      UPDATE public.inventory_items
+      SET stock = GREATEST(stock - 1, 0)
+      WHERE id = NEW.vaccine_item_id;
+    END IF;
   END IF;
   RETURN NEW;
 END; $$;
