@@ -24,6 +24,38 @@ type InventoryItem = { id: string; name: string; stock: number };
 type AppointmentInfo = { id: string; contact_number: string | null; created_at: string; full_name: string };
 type PatientSummary = { apptId: string; userId: string; maxDose: number; doses: VaccRow[] };
 
+const dedupeDoses = (doses: VaccRow[]): VaccRow[] => {
+  const grouped = new Map<number, VaccRow[]>();
+
+  for (const dose of doses) {
+    const key = dose.dose_number ?? 0;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(dose);
+  }
+
+  const compareEntries = (a: VaccRow, b: VaccRow) => {
+    if (a.status === "completed" && b.status !== "completed") return -1;
+    if (a.status !== "completed" && b.status === "completed") return 1;
+
+    const aHasVaccine = Boolean(a.vaccine_item_id);
+    const bHasVaccine = Boolean(b.vaccine_item_id);
+    if (aHasVaccine !== bHasVaccine) return aHasVaccine ? -1 : 1;
+
+    const aAdministered = a.administered_at ? Date.parse(a.administered_at) : 0;
+    const bAdministered = b.administered_at ? Date.parse(b.administered_at) : 0;
+    if (aAdministered !== bAdministered) return bAdministered - aAdministered;
+
+    const aCreated = Date.parse(a.created_at) || 0;
+    const bCreated = Date.parse(b.created_at) || 0;
+    return bCreated - aCreated;
+  };
+
+  return Array.from(grouped.entries())
+    .sort(([aKey], [bKey]) => aKey - bKey)
+    .map(([, entries]) => entries.slice().sort(compareEntries)[0])
+    .filter((dose): dose is VaccRow => Boolean(dose));
+};
+
 export default function AdminPatientsPage() {
   const [vaccs, setVaccs] = useState<VaccRow[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
@@ -57,8 +89,8 @@ export default function AdminPatientsPage() {
       const userId = rows[0].patient_user_id;
       const completed = rows.filter((r) => r.status === "completed");
       const maxDose = completed.reduce((m, r) => Math.max(m, r.dose_number || 0), 0);
-      const allDoses = rows.sort((a, b) => (a.dose_number || 0) - (b.dose_number || 0));
-      list.push({ apptId, userId, maxDose, doses: allDoses });
+      const doseHistory = dedupeDoses(rows);
+      list.push({ apptId, userId, maxDose, doses: doseHistory });
     }
     return list;
   }, [byAppointment]);
@@ -500,12 +532,27 @@ export default function AdminPatientsPage() {
                     <div className="mt-2 grid gap-3 md:grid-cols-2">
                       {viewPatient.doses.map((dose) => (
                         <div key={dose.id} className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
-                          <div className="text-sm font-medium text-neutral-900">Dose {dose.dose_number}</div>
-                          <div className="text-sm text-neutral-600">
-                            <span className="font-medium text-neutral-700">Vaccine:</span> {dose.vaccine_item_id ? itemNames[dose.vaccine_item_id] ?? "—" : "—"}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-medium text-neutral-900">Dose {dose.dose_number ?? "—"}</div>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                dose.status === "completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                              }`}
+                            >
+                              {dose.status === "completed" ? "Completed" : "Scheduled"}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-sm text-neutral-600">
+                            <span className="font-medium text-neutral-700">Vaccine:</span>{" "}
+                            {dose.vaccine_item_id
+                              ? itemNames[dose.vaccine_item_id] ?? "Unknown vaccine"
+                              : dose.status === "completed"
+                              ? "—"
+                              : "Pending assignment"}
                           </div>
                           <div className="text-sm text-neutral-600">
-                            <span className="font-medium text-neutral-700">Administered:</span> {formatDate(dose.administered_at)}
+                            <span className="font-medium text-neutral-700">Administered:</span>{" "}
+                            {dose.status === "completed" ? formatDate(dose.administered_at) : "Not yet administered"}
                           </div>
                         </div>
                       ))}
