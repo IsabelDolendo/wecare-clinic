@@ -14,6 +14,9 @@ const RegisterSchema = z
   .object({
     fullName: z.string().min(2, "Full name is too short"),
     email: z.string().email(),
+    contactNumber: z.string().min(7, "Contact number is too short"),
+    address: z.string().min(5, "Address is too short"),
+    sex: z.enum(["female", "male", "prefer_not_to_say"], { message: "Please select a sex" }),
     password: z.string().min(6),
     confirmPassword: z.string().min(6),
   })
@@ -32,7 +35,7 @@ export default function RegisterPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<RegisterValues>({ resolver: zodResolver(RegisterSchema) });
+  } = useForm<RegisterValues>({ resolver: zodResolver(RegisterSchema), defaultValues: { sex: "female" } });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -43,7 +46,13 @@ export default function RegisterPage() {
       email: values.email,
       password: values.password,
       options: {
-        data: { role: "patient", full_name: values.fullName },
+        data: {
+          role: "patient",
+          full_name: values.fullName,
+          contact_number: values.contactNumber,
+          address: values.address,
+          sex: values.sex,
+        },
         emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/login` : undefined,
       },
     });
@@ -65,7 +74,7 @@ export default function RegisterPage() {
       <div className="relative z-10 flex min-h-screen flex-col">
         {/* Form card */}
         <div className="flex flex-1 items-center justify-center p-4">
-          <div className="card w-full max-w-md overflow-hidden p-0 rounded-xl">
+          <div className="card w-full max-w-md overflow-hidden rounded-3xl border border-white/60 bg-white/90 shadow-xl backdrop-blur animate-card-pop">
             <div className="bg-brand-red p-6 md:p-7 flex items-center justify-center">
               <Image
                 src="/images/logo.jpg"
@@ -103,6 +112,44 @@ export default function RegisterPage() {
                   />
                   {errors.email && (
                     <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Contact Number</label>
+                  <input
+                    type="tel"
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                    placeholder="09XX XXX XXXX"
+                    {...register("contactNumber")}
+                  />
+                  {errors.contactNumber && (
+                    <p className="text-red-600 text-sm mt-1">{errors.contactNumber.message}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Address</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                    placeholder="House No., Street, City"
+                    {...register("address")}
+                  />
+                  {errors.address && (
+                    <p className="text-red-600 text-sm mt-1">{errors.address.message}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Sex</label>
+                  <select
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                    {...register("sex")}
+                  >
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                    <option value="prefer_not_to_say">Prefer not to say</option>
+                  </select>
+                  {errors.sex && (
+                    <p className="text-red-600 text-sm mt-1">{errors.sex.message}</p>
                   )}
                 </div>
                 <div>

@@ -99,7 +99,7 @@ function LoginContent() {
       <div className="relative z-10 flex min-h-screen flex-col">
         {/* Form card */}
         <div className="flex flex-1 items-center justify-center p-4">
-          <div className="card w-full max-w-md overflow-hidden p-0 rounded-xl">
+          <div className="card w-full max-w-md overflow-hidden rounded-[2.5rem] border border-white/60 bg-white/90 shadow-xl backdrop-blur animate-card-pop">
             <div className="flex items-center justify-center bg-brand-red p-6 md:p-7">
               <Image
                 src="/images/logo.jpg"
