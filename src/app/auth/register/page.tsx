@@ -16,6 +16,7 @@ const RegisterSchema = z
     email: z.string().email(),
     contactNumber: z.string().min(7, "Contact number is too short"),
     address: z.string().min(5, "Address is too short"),
+    birthday: z.string().refine((val) => !isNaN(Date.parse(val)), "Invalid date"),
     sex: z.enum(["female", "male", "prefer_not_to_say"], { message: "Please select a sex" }),
     password: z.string().min(6),
     confirmPassword: z.string().min(6),
@@ -42,7 +43,7 @@ export default function RegisterPage() {
   const onSubmit = async (values: RegisterValues) => {
     setError(null);
     setMessage(null);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: values.email,
       password: values.password,
       options: {
@@ -51,12 +52,30 @@ export default function RegisterPage() {
           full_name: values.fullName,
           contact_number: values.contactNumber,
           address: values.address,
+          birthday: values.birthday,
           sex: values.sex,
         },
         emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/login` : undefined,
       },
     });
     if (error) return setError(error.message);
+
+    // Ensure profile data is inserted into profiles table
+    if (data.user) {
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: data.user.id,
+        full_name: values.fullName,
+        address: values.address,
+        birthday: values.birthday,
+        contact_number: values.contactNumber,
+        sex: values.sex,
+      });
+      if (profileError) {
+        console.error("Failed to insert profile:", profileError);
+        // Don't block registration, but log the error
+      }
+    }
+
     setMessage("Registration successful. Please check your email to verify your account.");
     // After verify, user can login
     setTimeout(() => router.push("/auth/login"), 1500);
@@ -136,6 +155,17 @@ export default function RegisterPage() {
                   />
                   {errors.address && (
                     <p className="text-red-600 text-sm mt-1">{errors.address.message}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Birthday</label>
+                  <input
+                    type="date"
+                    className="w-full rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-brand-red"
+                    {...register("birthday")}
+                  />
+                  {errors.birthday && (
+                    <p className="text-red-600 text-sm mt-1">{errors.birthday.message}</p>
                   )}
                 </div>
                 <div>
