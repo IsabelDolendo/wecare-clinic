@@ -390,7 +390,7 @@ export default function AdminPatientsPage() {
           <p className="mt-2 text-2xl font-semibold text-green-900">{metrics.fully}</p>
         </article>
         <article className="rounded-lg border border-purple-200 bg-purple-50/80 p-4 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
-          <p className="text-xs uppercase tracking-wide text-purple-700/80">Completed sessions</p>
+          <p className="text-xs uppercase tracking-wide text-purple-700/80">Completed Doses</p>
           <p className="mt-2 text-2xl font-semibold text-purple-900">{metrics.totalDoses}</p>
         </article>
       </section>

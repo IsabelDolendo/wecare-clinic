@@ -153,15 +153,15 @@ export default function EVaccinationCardPage() {
         {stats.totalCompleted > 0 && (
           <div className="flex gap-3">
             <div className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-center shadow-sm">
-              <p className="text-xs uppercase tracking-wide text-neutral-500">Total Doses</p>
+              <p className="text-xs uppercase tracking-wide text-neutral-500">Total Sessions</p>
               <p className="text-lg font-semibold text-neutral-900">{stats.totalCompleted}</p>
             </div>
             <div className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-center shadow-sm">
-              <p className="text-xs uppercase tracking-wide text-neutral-500">Vaccination Courses</p>
+              <p className="text-xs uppercase tracking-wide text-neutral-500">Completed Courses</p>
               <p className="text-lg font-semibold text-neutral-900">{stats.totalCourses}</p>
             </div>
             <div className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-center shadow-sm">
-              <p className="text-xs uppercase tracking-wide text-neutral-500">Last Dose</p>
+              <p className="text-xs uppercase tracking-wide text-neutral-500">Last Session</p>
               <p className="text-sm font-semibold text-neutral-900">
                 {stats.lastUpdated ? new Date(stats.lastUpdated).toLocaleDateString() : "—"}
               </p>
