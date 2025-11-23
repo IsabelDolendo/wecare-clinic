@@ -10,7 +10,11 @@ type Vacc = {
   vaccine_item_id: string | null;
   dose_number: number;
   administered_at: string | null;
+  administered_by: string | null;
   status: string;
+  nurse?: {
+    full_name: string;
+  } | null;
 };
 
 type Item = { id: string; name: string };
@@ -40,7 +44,16 @@ export default function EVaccinationCardPage() {
       }
       const { data, error } = await supabase
         .from("vaccinations")
-        .select("id, appointment_id, vaccine_item_id, dose_number, administered_at, status")
+        .select(`
+          id, 
+          appointment_id, 
+          vaccine_item_id, 
+          dose_number, 
+          administered_at, 
+          administered_by,
+          status,
+          nurse:administered_by (full_name)
+        `)
         .eq("patient_user_id", user.id)
         .eq("status", "completed")
         .order("administered_at", { ascending: true });
@@ -214,7 +227,7 @@ export default function EVaccinationCardPage() {
                     <tr>
                       <th className="p-3 text-left font-medium">Dose</th>
                       <th className="p-3 text-left font-medium">Vaccine</th>
-                      <th className="p-3 text-left font-medium">Administered on</th>
+                      <th className="p-3 text-left font-medium">Administered By</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-200">
@@ -228,13 +241,16 @@ export default function EVaccinationCardPage() {
                         <td className="p-3 text-neutral-800">
                           {d.vaccine_item_id ? items[d.vaccine_item_id]?.name ?? "—" : "—"}
                         </td>
-                        <td className="p-3 text-neutral-700">
-                          {d.administered_at
-                            ? new Date(d.administered_at).toLocaleString(undefined, {
-                                dateStyle: "medium",
-                                timeStyle: "short",
-                              })
-                            : "—"}
+                        <td className="p-3 text-neutral-700 space-y-1">
+                          <div className="font-medium">{d.nurse?.full_name || "—"}</div>
+                          <div className="text-xs text-neutral-500">
+                            {d.administered_at
+                              ? new Date(d.administered_at).toLocaleString(undefined, {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })
+                              : "—"}
+                          </div>
                         </td>
                       </tr>
                     ))}

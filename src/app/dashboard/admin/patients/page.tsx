@@ -11,7 +11,12 @@ type VaccRow = {
   dose_number: number;
   status: "scheduled" | "completed" | "cancelled";
   administered_at: string | null;
+  administered_by: string | null;
   created_at: string;
+  nurse?: {
+    full_name: string;
+    license_number?: string;
+  };
 };
 
 type Profile = {
@@ -22,6 +27,12 @@ type Profile = {
 };
 type InventoryItem = { id: string; name: string; stock: number };
 type AppointmentInfo = { id: string; contact_number: string | null; created_at: string; full_name: string };
+type Nurse = { 
+  id: string; 
+  full_name: string; 
+  license_number?: string; 
+  is_active: boolean 
+};
 type PatientSummary = { apptId: string; userId: string; maxDose: number; doses: VaccRow[] };
 
 const dedupeDoses = (doses: VaccRow[]): VaccRow[] => {
@@ -70,7 +81,10 @@ export default function AdminPatientsPage() {
   const [smsSending, setSmsSending] = useState(false);
   const [vaccPatient, setVaccPatient] = useState<PatientSummary | null>(null);
   const [vaccItemId, setVaccItemId] = useState<string | null>(null);
+  const [administeredBy, setAdministeredBy] = useState<string>("");
   const [vaccProcessing, setVaccProcessing] = useState(false);
+  const [nurses, setNurses] = useState<Nurse[]>([]);
+  const [nurseFilter, setNurseFilter] = useState<string>("all");
 
   const byAppointment = useMemo(() => {
     const map = new Map<string, VaccRow[]>();
@@ -96,6 +110,31 @@ export default function AdminPatientsPage() {
   }, [byAppointment]);
 
   const inProgress = summary.filter((s) => s.maxDose < 3);
+  // Get unique nurses who have administered vaccinations
+  const adminNurses = useMemo(() => {
+    const nurseMap = new Map<string, Nurse>();
+    vaccs.forEach(vacc => {
+      if (vacc.status === 'completed' && vacc.administered_by && vacc.nurse) {
+        nurseMap.set(vacc.administered_by, {
+          id: vacc.administered_by,
+          full_name: vacc.nurse.full_name,
+          license_number: vacc.nurse.license_number
+        });
+      }
+    });
+    return Array.from(nurseMap.values());
+  }, [vaccs]);
+
+  const filteredFully = useMemo(() => {
+    return summary.filter(s => s.maxDose >= 3).filter(patient => {
+      if (nurseFilter === "all") return true;
+      return patient.doses.some(dose => 
+        dose.status === 'completed' && 
+        dose.administered_by === nurseFilter
+      );
+    });
+  }, [summary, nurseFilter]);
+
   const fully = summary.filter((s) => s.maxDose >= 3);
 
   const metrics = useMemo(() => {
@@ -109,15 +148,45 @@ export default function AdminPatientsPage() {
     };
   }, [fully.length, inProgress.length, summary.length, vaccs.length]);
 
+  async function loadNurses() {
+    const { data: nursesData, error: nursesError } = await supabase
+      .from('nurses')
+      .select('id, full_name, license_number, is_active')
+      .eq('is_active', true)
+      .order('full_name', { ascending: true });
+
+    if (nursesError) {
+      console.error('Error fetching nurses:', nursesError);
+      return [];
+    }
+
+    return nursesData || [];
+  }
+
   async function load() {
     setLoading(true);
     setError(null);
     let errorMessage: string | null = null;
 
+    // Load nurses first
+    const nursesList = await loadNurses();
+    setNurses(nursesList);
+
     const { data: vdata, error: verr } = await supabase
       .from("vaccinations")
-      .select("id, patient_user_id, vaccine_item_id, appointment_id, dose_number, status, administered_at, created_at")
-      .in("status", ["completed", "scheduled"]) // Include both scheduled and completed
+      .select(`
+        id, 
+        patient_user_id, 
+        vaccine_item_id, 
+        appointment_id, 
+        dose_number, 
+        status, 
+        administered_at, 
+        administered_by,
+        created_at,
+        nurse:administered_by (full_name, license_number)
+      `)
+      .in("status", ["completed", "scheduled"])
       .order("administered_at", { ascending: true });
 
     if (verr) {
@@ -304,11 +373,17 @@ export default function AdminPatientsPage() {
   const openVacc = (summary: PatientSummary) => {
     setVaccPatient(summary);
     setVaccItemId(availableItems.length > 0 ? availableItems[0].id : null);
+    // Set default to first active nurse if available
+    const activeNurses = nurses.filter(nurse => nurse.is_active !== false);
+    if (activeNurses.length > 0) {
+      setAdministeredBy(activeNurses[0].id);
+    }
     setVaccProcessing(false);
   };
   const closeVacc = () => {
     setVaccPatient(null);
     setVaccItemId(null);
+    setAdministeredBy("");
     setVaccProcessing(false);
   };
 
@@ -318,9 +393,18 @@ export default function AdminPatientsPage() {
       alert("Please select a vaccine item.");
       return;
     }
+    if (!administeredBy) {
+      alert("Please select a nurse who administered the vaccine.");
+      return;
+    }
     const item = availableItems.find((i) => i.id === vaccItemId);
     if (!item) {
       alert("Invalid vaccine item selected.");
+      return;
+    }
+    const selectedNurse = nurses.find(n => n.id === administeredBy);
+    if (!selectedNurse) {
+      alert("Selected nurse not found.");
       return;
     }
     const nextDose = vaccPatient.maxDose + 1;
@@ -333,6 +417,7 @@ export default function AdminPatientsPage() {
         dose_number: nextDose,
         status: "completed",
         administered_at: new Date().toISOString(),
+        administered_by: selectedNurse.id,
       });
       if (insertErr) throw insertErr;
 
@@ -464,17 +549,39 @@ export default function AdminPatientsPage() {
       </section>
 
       <section className="space-y-4 rounded-lg border border-neutral-200 bg-white/80 p-5 shadow-sm">
-        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Completed appointments</h3>
             <p className="text-sm text-neutral-600">Completed 3/3 sessions.</p>
           </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="nurse-filter" className="text-sm font-medium text-neutral-700">
+              Filter by Nurse:
+            </label>
+            <select
+              id="nurse-filter"
+              className="rounded-md border border-neutral-200 px-2 py-1 text-sm shadow-sm focus:border-[#800000] focus:outline-none focus:ring-1 focus:ring-[#800000]/30 min-w-[200px]"
+              value={nurseFilter}
+              onChange={(e) => setNurseFilter(e.target.value)}
+            >
+              <option value="all">All Nurses</option>
+              {adminNurses.map(nurse => (
+                <option key={nurse.id} value={nurse.id}>
+                  {nurse.full_name} {nurse.license_number ? `(${nurse.license_number})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        {fully.length === 0 ? (
-          <p className="text-sm text-neutral-600">No completed appointments.</p>
+        {filteredFully.length === 0 ? (
+          <p className="text-sm text-neutral-600">
+            {fully.length === 0 
+              ? "No completed appointments." 
+              : "No patients match the selected filter."}
+          </p>
         ) : (
           <div className="grid gap-2">
-            {fully.map((r) => (
+            {filteredFully.map((r) => (
               <button
                 key={r.apptId}
                 type="button"
@@ -488,6 +595,12 @@ export default function AdminPatientsPage() {
                     {getContactNumber(r.userId) && (
                       <span className="ml-2 text-xs text-neutral-500">({getContactNumber(r.userId)})</span>
                     )}
+                    {(() => {
+                      const completedDose = r.doses.find(d => d.status === 'completed' && d.nurse);
+                      if (!completedDose?.nurse) return null;
+                      
+                
+                    })()}
                   </div>
                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${progressClass(r.maxDose)}`}>
                     {vaccinationStatusLabel(r.maxDose)}
@@ -554,6 +667,12 @@ export default function AdminPatientsPage() {
                             <span className="font-medium text-neutral-700">Administered:</span>{" "}
                             {dose.status === "completed" ? formatDate(dose.administered_at) : "Not yet administered"}
                           </div>
+                          {dose.status === "completed" && dose.nurse && (
+                            <div className="text-sm text-neutral-600">
+                              <span className="font-medium text-neutral-700">Administered By:</span>{" "}
+                              {dose.nurse.full_name} {dose.nurse.license_number ? `(${dose.nurse.license_number})` : ''}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -637,7 +756,7 @@ export default function AdminPatientsPage() {
                 </div>
                 <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeVacc}>×</button>
               </div>
-              <div className="mt-4 space-y-3 text-sm">
+              <div className="mt-4 space-y-4">
                 <div className="rounded-md border border-neutral-200 bg-neutral-50/80 p-3">
                   <div className="font-medium text-neutral-900">{getProfileName(vaccPatient.userId)}</div>
                   <div className="text-neutral-600">Current progress: {vaccPatient.maxDose}/3 sessions</div>
@@ -656,6 +775,31 @@ export default function AdminPatientsPage() {
                       {availableItems.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.name} (stock {item.stock})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700" htmlFor="administered-by">
+                    Administered By
+                  </label>
+                  {nurses.length === 0 ? (
+                    <p className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                      No nurses found in the system. Please add nurses to the database.
+                    </p>
+                  ) : (
+                    <select
+                      id="administered-by"
+                      className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
+                      value={administeredBy}
+                      onChange={(e) => setAdministeredBy(e.target.value)}
+                      disabled={nurses.length === 0}
+                    >
+                      <option value="">Select a nurse</option>
+                      {nurses.map((nurse) => (
+                        <option key={nurse.id} value={nurse.id}>
+                          {nurse.full_name} {nurse.license_number ? `(${nurse.license_number})` : ''}
                         </option>
                       ))}
                     </select>
