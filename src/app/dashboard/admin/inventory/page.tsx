@@ -653,7 +653,6 @@ export default function InventoryPage() {
                     <div key={row.id} className="rounded border px-4 py-3 text-sm">
                       <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                         <div className="font-medium">{row.patient_name}</div>
-                        <span className="text-xs text-neutral-500">Dose {row.dose_number ?? "—"}</span>
                       </div>
                       <div className="mt-1 grid gap-1 md:grid-cols-2">
                         <div><span className="text-neutral-500">Administered:</span> {row.administered_at ? new Date(row.administered_at).toLocaleString() : "—"}</div>

@@ -43,42 +43,72 @@ export default function RegisterPage() {
   const onSubmit = async (values: RegisterValues) => {
     setError(null);
     setMessage(null);
-    const { data, error } = await supabase.auth.signUp({
-      email: values.email,
-      password: values.password,
-      options: {
-        data: {
-          role: "patient",
-          full_name: values.fullName,
-          contact_number: values.contactNumber,
-          address: values.address,
-          birthday: values.birthday,
-          sex: values.sex,
-        },
-        emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/login` : undefined,
-      },
-    });
-    if (error) return setError(error.message);
-
-    // Ensure profile data is inserted into profiles table
-    if (data.user) {
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        id: data.user.id,
-        full_name: values.fullName,
-        address: values.address,
-        birthday: values.birthday,
-        contact_number: values.contactNumber,
-        sex: values.sex,
+    
+    // Verify environment variables
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      const errorMsg = 'Missing Supabase environment variables. Please check your .env.local file.';
+      console.error(errorMsg);
+      console.log('Current environment variables:', {
+        hasUrl: !!supabaseUrl,
+        hasKey: !!supabaseKey,
+        env: process.env.NODE_ENV,
       });
-      if (profileError) {
-        console.error("Failed to insert profile:", profileError);
-        // Don't block registration, but log the error
-      }
+      return setError('Configuration error. Please contact support.');
     }
 
-    setMessage("Registration successful. Please check your email to verify your account.");
-    // After verify, user can login
-    setTimeout(() => router.push("/auth/login"), 1500);
+    try {
+      console.log('Attempting to sign up user with email:', values.email);
+      console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+      
+      // First, sign up the user
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email: values.email,
+        password: values.password,
+        options: {
+          data: {
+            full_name: values.fullName,
+            contact_number: values.contactNumber,
+          },
+          emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/login` : undefined,
+        },
+      });
+
+      if (signUpError) {
+        console.error('Sign up error:', signUpError);
+        return setError(signUpError.message || 'Failed to create account. Please try again.');
+      }
+
+      // If user is created successfully, insert profile data
+      if (authData?.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: authData.user.id,
+            full_name: values.fullName,
+            email: values.email,
+            address: values.address,
+            birthday: values.birthday,
+            contact_number: values.contactNumber,
+            sex: values.sex,
+            role: 'patient',
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+
+        if (profileError) {
+          console.error('Profile update failed:', profileError);
+          return setError('Failed to create profile. Please contact support.');
+        }
+      }
+
+      setMessage("Registration successful! Please check your email to verify your account.");
+      setTimeout(() => router.push("/auth/login"), 3000);
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError('An error occurred during registration. Please try again.');
+    }
   };
 
   return (

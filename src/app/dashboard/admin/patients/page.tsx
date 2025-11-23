@@ -367,7 +367,7 @@ export default function AdminPatientsPage() {
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Appointments</h2>
-          <p className="text-sm text-neutral-600">Track vaccination progress per appointment, reach out to patients, and record completed doses.</p>
+          <p className="text-sm text-neutral-600">Track vaccination progress per appointment, reach out to patients, and record completed sessions.</p>
         </div>
         {loading && <span className="text-sm text-neutral-500">Syncing latest records…</span>}
       </header>
@@ -390,7 +390,7 @@ export default function AdminPatientsPage() {
           <p className="mt-2 text-2xl font-semibold text-green-900">{metrics.fully}</p>
         </article>
         <article className="rounded-lg border border-purple-200 bg-purple-50/80 p-4 shadow-sm transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-md">
-          <p className="text-xs uppercase tracking-wide text-purple-700/80">Completed doses</p>
+          <p className="text-xs uppercase tracking-wide text-purple-700/80">Completed sessions</p>
           <p className="mt-2 text-2xl font-semibold text-purple-900">{metrics.totalDoses}</p>
         </article>
       </section>
@@ -428,7 +428,7 @@ export default function AdminPatientsPage() {
                     <td className="p-3 text-neutral-600">{getContactNumber(row.userId) ?? "—"}</td>
                     <td className="p-3">
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${progressClass(row.maxDose)}`}>
-                        {row.maxDose}/3 doses
+                        {row.maxDose}/3 sessions
                       </span>
                     </td>
                     <td className="p-3">
@@ -467,7 +467,7 @@ export default function AdminPatientsPage() {
         <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">Completed appointments</h3>
-            <p className="text-sm text-neutral-600">Completed 3/3 doses.</p>
+            <p className="text-sm text-neutral-600">Completed 3/3 sessions.</p>
           </div>
         </div>
         {fully.length === 0 ? (
@@ -484,7 +484,7 @@ export default function AdminPatientsPage() {
                 <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                   <div className="text-sm text-neutral-700">
                     <span className="font-medium text-neutral-900">{getProfileName(r.userId)}</span>
-                    <span className="ml-2 text-xs text-neutral-500">3/3 doses</span>
+                    <span className="ml-2 text-xs text-neutral-500">3/3 sessions</span>
                     {getContactNumber(r.userId) && (
                       <span className="ml-2 text-xs text-neutral-500">({getContactNumber(r.userId)})</span>
                     )}
@@ -507,7 +507,7 @@ export default function AdminPatientsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold">Vaccination Details</h3>
-                  <p className="text-sm text-neutral-600">Overview of doses completed by this patient.</p>
+                  <p className="text-sm text-neutral-600">Overview of sessions completed by this patient.</p>
                 </div>
                 <button className="rounded-md p-2 hover:bg-neutral-100" aria-label="Close" onClick={closeView}>×</button>
               </div>
@@ -522,7 +522,7 @@ export default function AdminPatientsPage() {
                     {vaccinationStatusLabel(viewPatient.maxDose)}
                   </span>
                   <span className="text-neutral-600">Progress:</span>
-                  <span className="font-medium text-neutral-900">{viewPatient.maxDose}/3 doses</span>
+                  <span className="font-medium text-neutral-900">{viewPatient.maxDose}/3 sessions</span>
                 </div>
                 <div>
                   <h4 className="text-sm font-semibold text-neutral-900">Vaccination history</h4>
@@ -533,7 +533,7 @@ export default function AdminPatientsPage() {
                       {viewPatient.doses.map((dose) => (
                         <div key={dose.id} className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="text-sm font-medium text-neutral-900">Dose {dose.dose_number ?? "—"}</div>
+                            <div className="text-sm font-medium text-neutral-900">Session {dose.dose_number ?? "—"}</div>
                             <span
                               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                                 dose.status === "completed" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
@@ -640,7 +640,7 @@ export default function AdminPatientsPage() {
               <div className="mt-4 space-y-3 text-sm">
                 <div className="rounded-md border border-neutral-200 bg-neutral-50/80 p-3">
                   <div className="font-medium text-neutral-900">{getProfileName(vaccPatient.userId)}</div>
-                  <div className="text-neutral-600">Current progress: {vaccPatient.maxDose}/3 doses</div>
+                  <div className="text-neutral-600">Current progress: {vaccPatient.maxDose}/3 sessions</div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700" htmlFor="vacc-item">Select vaccine item</label>
