@@ -118,7 +118,8 @@ export default function AdminPatientsPage() {
         nurseMap.set(vacc.administered_by, {
           id: vacc.administered_by,
           full_name: vacc.nurse.full_name,
-          license_number: vacc.nurse.license_number
+          license_number: vacc.nurse.license_number,
+          is_active: true
         });
       }
     });
