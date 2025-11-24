@@ -13,10 +13,12 @@ type VaccRow = {
   administered_at: string | null;
   administered_by: string | null;
   created_at: string;
-  nurse: {  // Keep as single object to match the data structure
+  nurse: {  
     full_name: string;
     license_number?: string;
   };
+  // Added to support multiple vaccines per dose (e.g. Dose 1)
+  additional_vaccine_ids?: string[]; 
 };
 
 type Profile = {
@@ -63,7 +65,33 @@ const dedupeDoses = (doses: VaccRow[]): VaccRow[] => {
 
   return Array.from(grouped.entries())
     .sort(([aKey], [bKey]) => aKey - bKey)
-    .map(([, entries]) => entries.slice().sort(compareEntries)[0])
+    .map(([, entries]) => {
+      // Sort to get the main entry
+      const sorted = entries.slice().sort(compareEntries);
+      const main = sorted[0];
+
+      if (!main) return null;
+
+      // If this dose is completed, check if there are other completed rows 
+      // with different vaccine IDs (e.g. for Dose 1 which has 2 vaccines)
+      if (main.status === "completed") {
+        const otherCompleted = entries.filter(e => 
+          e.id !== main.id && 
+          e.status === "completed" && 
+          e.vaccine_item_id
+        );
+
+        if (otherCompleted.length > 0) {
+          // Merge the vaccine IDs into the main record
+          return {
+            ...main,
+            additional_vaccine_ids: otherCompleted.map(e => e.vaccine_item_id as string)
+          };
+        }
+      }
+
+      return main;
+    })
     .filter((dose): dose is VaccRow => Boolean(dose));
 };
 
@@ -79,8 +107,10 @@ export default function AdminPatientsPage() {
   const [smsPatient, setSmsPatient] = useState<PatientSummary | null>(null);
   const [smsMessage, setSmsMessage] = useState("");
   const [smsSending, setSmsSending] = useState(false);
+  
   const [vaccPatient, setVaccPatient] = useState<PatientSummary | null>(null);
   const [vaccItemId, setVaccItemId] = useState<string | null>(null);
+  const [vaccItemId2, setVaccItemId2] = useState<string | null>(null);
   const [administeredBy, setAdministeredBy] = useState<string>("");
   const [vaccProcessing, setVaccProcessing] = useState(false);
   const [nurses, setNurses] = useState<Nurse[]>([]);
@@ -110,21 +140,21 @@ export default function AdminPatientsPage() {
   }, [byAppointment]);
 
   const inProgress = summary.filter((s) => s.maxDose < 3);
-  // Get unique nurses who have administered vaccinations
-const adminNurses = useMemo(() => {
-  const nurseMap = new Map<string, Nurse>();
-  vaccs.forEach((vacc) => {
-    if (vacc.status === 'completed' && vacc.administered_by && vacc.nurse) {
-      nurseMap.set(vacc.administered_by, {
-        id: vacc.administered_by,
-        full_name: vacc.nurse.full_name,
-        license_number: vacc.nurse.license_number,
-        is_active: true
-      });
-    }
-  });
-  return Array.from(nurseMap.values());
-}, [vaccs]);
+  
+  const adminNurses = useMemo(() => {
+    const nurseMap = new Map<string, Nurse>();
+    vaccs.forEach((vacc) => {
+      if (vacc.status === 'completed' && vacc.administered_by && vacc.nurse) {
+        nurseMap.set(vacc.administered_by, {
+          id: vacc.administered_by,
+          full_name: vacc.nurse.full_name,
+          license_number: vacc.nurse.license_number,
+          is_active: true
+        });
+      }
+    });
+    return Array.from(nurseMap.values());
+  }, [vaccs]);
 
   const filteredFully = useMemo(() => {
     return summary.filter(s => s.maxDose >= 3).filter(patient => {
@@ -169,35 +199,31 @@ const adminNurses = useMemo(() => {
     setError(null);
     let errorMessage: string | null = null;
 
-    // Load nurses first
     const nursesList = await loadNurses();
     setNurses(nursesList);
 
     const { data: vdata, error: verr } = await supabase
-  .from("vaccinations")
-  .select(`
-    id, 
-    patient_user_id, 
-    vaccine_item_id, 
-    appointment_id, 
-    dose_number, 
-    status, 
-    administered_at, 
-    administered_by,
-    created_at,
-    nurse:administered_by (full_name, license_number)
-  `)
-  .in("status", ["completed", "scheduled"])
-  .order("administered_at", { ascending: true });
+      .from("vaccinations")
+      .select(`
+        id, 
+        patient_user_id, 
+        vaccine_item_id, 
+        appointment_id, 
+        dose_number, 
+        status, 
+        administered_at, 
+        administered_by,
+        created_at,
+        nurse:administered_by (full_name, license_number)
+      `)
+      .in("status", ["completed", "scheduled"])
+      .order("administered_at", { ascending: true });
 
     if (verr) {
       errorMessage = verr.message;
     }
 
     const vv = (vdata ?? []) as unknown as VaccRow[];
-    
-    // Debug: Log the first few vaccination records to check nurse data
-    console.log('Vaccination records with nurse data:', vv.slice(0, 3));
     
     setVaccs(vv);
     const patientIds = Array.from(new Set(vv.map((v) => v.patient_user_id)));
@@ -338,7 +364,6 @@ const adminNurses = useMemo(() => {
     if (!smsPatient) return;
     setSmsSending(true);
     try {
-      // Get patient's email from profiles table
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("email")
@@ -350,7 +375,6 @@ const adminNurses = useMemo(() => {
       }
       const patientEmail = profileData.email;
 
-      // Send email
       const emailResponse = await fetch("/api/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -376,53 +400,99 @@ const adminNurses = useMemo(() => {
 
   const openVacc = (summary: PatientSummary) => {
     setVaccPatient(summary);
-    setVaccItemId(availableItems.length > 0 ? availableItems[0].id : null);
-    // Set default to first active nurse if available
+    
+    // Default select first item for 1st choice
+    if (availableItems.length > 0) {
+      setVaccItemId(availableItems[0].id);
+      setVaccItemId2(availableItems.length > 0 ? availableItems[0].id : null);
+    } else {
+      setVaccItemId(null);
+      setVaccItemId2(null);
+    }
+
     const activeNurses = nurses.filter(nurse => nurse.is_active !== false);
     if (activeNurses.length > 0) {
       setAdministeredBy(activeNurses[0].id);
     }
     setVaccProcessing(false);
   };
+
   const closeVacc = () => {
     setVaccPatient(null);
     setVaccItemId(null);
+    setVaccItemId2(null);
     setAdministeredBy("");
     setVaccProcessing(false);
   };
 
   async function confirmVaccination() {
     if (!vaccPatient) return;
+    
+    const nextDose = vaccPatient.maxDose + 1;
+    const isFirstDose = nextDose === 1;
+
+    // Validate 1st Vaccine
     if (!vaccItemId) {
       alert("Please select a vaccine item.");
       return;
     }
+    const item1 = availableItems.find((i) => i.id === vaccItemId);
+    if (!item1) {
+      alert("Invalid primary vaccine item selected.");
+      return;
+    }
+
+    // Validate 2nd Vaccine if this is the first dose
+    let item2: InventoryItem | undefined;
+    if (isFirstDose) {
+      if (!vaccItemId2) {
+        alert("Please select the second vaccine item for the 1st dose.");
+        return;
+      }
+      item2 = availableItems.find((i) => i.id === vaccItemId2);
+      if (!item2) {
+        alert("Invalid secondary vaccine item selected.");
+        return;
+      }
+    }
+
     if (!administeredBy) {
       alert("Please select a nurse who administered the vaccine.");
       return;
     }
-    const item = availableItems.find((i) => i.id === vaccItemId);
-    if (!item) {
-      alert("Invalid vaccine item selected.");
-      return;
-    }
+
     const selectedNurse = nurses.find(n => n.id === administeredBy);
     if (!selectedNurse) {
       alert("Selected nurse not found.");
       return;
     }
-    const nextDose = vaccPatient.maxDose + 1;
+
     setVaccProcessing(true);
     try {
-      const { error: insertErr } = await supabase.from("vaccinations").insert({
+      const recordsToInsert = [];
+      const commonData = {
         patient_user_id: vaccPatient.userId,
         appointment_id: vaccPatient.apptId,
-        vaccine_item_id: item.id,
         dose_number: nextDose,
         status: "completed",
         administered_at: new Date().toISOString(),
         administered_by: selectedNurse.id,
+      };
+
+      recordsToInsert.push({
+        ...commonData,
+        vaccine_item_id: item1.id,
       });
+
+      if (isFirstDose && item2) {
+        recordsToInsert.push({
+          ...commonData,
+          vaccine_item_id: item2.id,
+        });
+      }
+
+      const { error: insertErr } = await supabase.from("vaccinations").insert(recordsToInsert);
+      
       if (insertErr) throw insertErr;
 
       const messageMap: Record<number, string> = {
@@ -599,12 +669,6 @@ const adminNurses = useMemo(() => {
                     {getContactNumber(r.userId) && (
                       <span className="ml-2 text-xs text-neutral-500">({getContactNumber(r.userId)})</span>
                     )}
-                    {(() => {
-                      const completedDose = r.doses.find(d => d.status === 'completed' && d.nurse);
-                      if (!completedDose?.nurse) return null;
-                      
-                
-                    })()}
                   </div>
                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${progressClass(r.maxDose)}`}>
                     {vaccinationStatusLabel(r.maxDose)}
@@ -661,22 +725,30 @@ const adminNurses = useMemo(() => {
                           </div>
                           <div className="mt-2 text-sm text-neutral-600">
                             <span className="font-medium text-neutral-700">Vaccine:</span>{" "}
-                            {dose.vaccine_item_id
-                              ? itemNames[dose.vaccine_item_id] ?? "Unknown vaccine"
-                              : dose.status === "completed"
-                              ? "—"
-                              : "Pending assignment"}
+                            {(() => {
+                                if (dose.status !== "completed") return "Pending assignment";
+                                
+                                const names = [];
+                                if (dose.vaccine_item_id) names.push(itemNames[dose.vaccine_item_id] ?? "Unknown vaccine");
+                                if (dose.additional_vaccine_ids) {
+                                  dose.additional_vaccine_ids.forEach(id => {
+                                    names.push(itemNames[id] ?? "Unknown vaccine");
+                                  });
+                                }
+                                
+                                return names.length > 0 ? names.join(" and ") : "—";
+                            })()}
                           </div>
                           <div className="text-sm text-neutral-600">
                             <span className="font-medium text-neutral-700">Administered:</span>{" "}
                             {dose.status === "completed" ? formatDate(dose.administered_at) : "Not yet administered"}
                           </div>
-                                {dose.status === "completed" && dose.nurse && (
-                              <div className="text-sm text-neutral-600">
-                                <span className="font-medium text-neutral-700">Administered By:</span>{" "}
-                                {dose.nurse.full_name} {dose.nurse.license_number ? `(${dose.nurse.license_number})` : ''}
-                              </div>
-                            )}
+                          {dose.status === "completed" && dose.nurse && (
+                            <div className="text-sm text-neutral-600">
+                              <span className="font-medium text-neutral-700">Administered By:</span>{" "}
+                              {dose.nurse.full_name} {dose.nurse.license_number ? `(${dose.nurse.license_number})` : ''}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -764,26 +836,57 @@ const adminNurses = useMemo(() => {
                 <div className="rounded-md border border-neutral-200 bg-neutral-50/80 p-3">
                   <div className="font-medium text-neutral-900">{getProfileName(vaccPatient.userId)}</div>
                   <div className="text-neutral-600">Current progress: {vaccPatient.maxDose}/3 sessions</div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700" htmlFor="vacc-item">Select vaccine item</label>
-                  {availableItems.length === 0 ? (
-                    <p className="mt-1 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">No vaccine inventory available. Please restock first.</p>
-                  ) : (
-                    <select
-                      id="vacc-item"
-                      className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
-                      value={vaccItemId ?? ""}
-                      onChange={(e) => setVaccItemId(e.target.value)}
-                    >
-                      {availableItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} (stock {item.stock})
-                        </option>
-                      ))}
-                    </select>
+                  {vaccPatient.maxDose === 0 && (
+                     <div className="mt-1 text-xs text-blue-700 font-medium">Note: 1st Dose requires 2 vaccines.</div>
                   )}
                 </div>
+                
+                {availableItems.length === 0 ? (
+                  <p className="mt-1 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">No vaccine inventory available. Please restock first.</p>
+                ) : (
+                  <>
+                    {/* Primary Vaccine Select */}
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700" htmlFor="vacc-item">
+                        {vaccPatient.maxDose === 0 ? "Select Primary Vaccine" : "Select Vaccine Item"}
+                      </label>
+                      <select
+                        id="vacc-item"
+                        className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
+                        value={vaccItemId ?? ""}
+                        onChange={(e) => setVaccItemId(e.target.value)}
+                      >
+                        {availableItems.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} (stock {item.stock})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Secondary Vaccine Select (Only if 0/3 -> 1/3) */}
+                    {vaccPatient.maxDose === 0 && (
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700" htmlFor="vacc-item-2">
+                          Select Secondary Vaccine
+                        </label>
+                        <select
+                          id="vacc-item-2"
+                          className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-2 shadow-sm focus:border-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000]/30"
+                          value={vaccItemId2 ?? ""}
+                          onChange={(e) => setVaccItemId2(e.target.value)}
+                        >
+                          {availableItems.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name} (stock {item.stock})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-neutral-700" htmlFor="administered-by">
                     Administered By

@@ -225,7 +225,7 @@ export default function EVaccinationCardPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-neutral-50 text-neutral-600">
                     <tr>
-                      <th className="p-3 text-left font-medium">Dose</th>
+                      <th className="p-3 text-left font-medium">Session Number</th>
                       <th className="p-3 text-left font-medium">Vaccine</th>
                       <th className="p-3 text-left font-medium">Administered By</th>
                     </tr>
