@@ -63,7 +63,7 @@ export default function EVaccinationCardPage() {
         setLoading(false);
         return;
       }
-      const vaccs = (data ?? []) as Vacc[];
+      const vaccs = (data ?? []) as unknown as Vacc[];
       setRows(vaccs);
 
       // Load item names

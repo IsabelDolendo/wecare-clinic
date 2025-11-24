@@ -13,7 +13,7 @@ type VaccRow = {
   administered_at: string | null;
   administered_by: string | null;
   created_at: string;
-  nurse?: {
+  nurse: {  // Keep as single object to match the data structure
     full_name: string;
     license_number?: string;
   };
@@ -111,20 +111,20 @@ export default function AdminPatientsPage() {
 
   const inProgress = summary.filter((s) => s.maxDose < 3);
   // Get unique nurses who have administered vaccinations
-  const adminNurses = useMemo(() => {
-    const nurseMap = new Map<string, Nurse>();
-    vaccs.forEach(vacc => {
-      if (vacc.status === 'completed' && vacc.administered_by && vacc.nurse) {
-        nurseMap.set(vacc.administered_by, {
-          id: vacc.administered_by,
-          full_name: vacc.nurse.full_name,
-          license_number: vacc.nurse.license_number,
-          is_active: true
-        });
-      }
-    });
-    return Array.from(nurseMap.values());
-  }, [vaccs]);
+const adminNurses = useMemo(() => {
+  const nurseMap = new Map<string, Nurse>();
+  vaccs.forEach((vacc) => {
+    if (vacc.status === 'completed' && vacc.administered_by && vacc.nurse) {
+      nurseMap.set(vacc.administered_by, {
+        id: vacc.administered_by,
+        full_name: vacc.nurse.full_name,
+        license_number: vacc.nurse.license_number,
+        is_active: true
+      });
+    }
+  });
+  return Array.from(nurseMap.values());
+}, [vaccs]);
 
   const filteredFully = useMemo(() => {
     return summary.filter(s => s.maxDose >= 3).filter(patient => {
@@ -174,29 +174,32 @@ export default function AdminPatientsPage() {
     setNurses(nursesList);
 
     const { data: vdata, error: verr } = await supabase
-      .from("vaccinations")
-      .select(`
-        id, 
-        patient_user_id, 
-        vaccine_item_id, 
-        appointment_id, 
-        dose_number, 
-        status, 
-        administered_at, 
-        administered_by,
-        created_at,
-        nurse:administered_by (full_name, license_number)
-      `)
-      .in("status", ["completed", "scheduled"])
-      .order("administered_at", { ascending: true });
+  .from("vaccinations")
+  .select(`
+    id, 
+    patient_user_id, 
+    vaccine_item_id, 
+    appointment_id, 
+    dose_number, 
+    status, 
+    administered_at, 
+    administered_by,
+    created_at,
+    nurse:administered_by (full_name, license_number)
+  `)
+  .in("status", ["completed", "scheduled"])
+  .order("administered_at", { ascending: true });
 
     if (verr) {
       errorMessage = verr.message;
     }
 
-    const vv = (vdata ?? []) as VaccRow[];
+    const vv = (vdata ?? []) as unknown as VaccRow[];
+    
+    // Debug: Log the first few vaccination records to check nurse data
+    console.log('Vaccination records with nurse data:', vv.slice(0, 3));
+    
     setVaccs(vv);
-
     const patientIds = Array.from(new Set(vv.map((v) => v.patient_user_id)));
 
     const profileMap: Record<string, Profile> = {};
@@ -668,12 +671,12 @@ export default function AdminPatientsPage() {
                             <span className="font-medium text-neutral-700">Administered:</span>{" "}
                             {dose.status === "completed" ? formatDate(dose.administered_at) : "Not yet administered"}
                           </div>
-                          {dose.status === "completed" && dose.nurse && (
-                            <div className="text-sm text-neutral-600">
-                              <span className="font-medium text-neutral-700">Administered By:</span>{" "}
-                              {dose.nurse.full_name} {dose.nurse.license_number ? `(${dose.nurse.license_number})` : ''}
-                            </div>
-                          )}
+                                {dose.status === "completed" && dose.nurse && (
+                              <div className="text-sm text-neutral-600">
+                                <span className="font-medium text-neutral-700">Administered By:</span>{" "}
+                                {dose.nurse.full_name} {dose.nurse.license_number ? `(${dose.nurse.license_number})` : ''}
+                              </div>
+                            )}
                         </div>
                       ))}
                     </div>
