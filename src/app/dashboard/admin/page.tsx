@@ -79,9 +79,9 @@ export default function AdminHome() {
 
   const pieData = useMemo(() => (
     dist ? [
-      { name: "1st Dose", value: dist.first, color: "#fca5a5" },
-      { name: "2nd Dose", value: dist.second, color: "#ef4444" },
-      { name: "3rd Dose", value: dist.third, color: "#b91c1c" },
+      { name: "1st Dose", value: dist.first, color: "#003f5c" },
+      { name: "2nd Dose", value: dist.second, color: "#58508d" },
+      { name: "3rd Dose", value: dist.third, color: "#bc5090" }
     ] : []
   ), [dist]);
 
@@ -108,11 +108,10 @@ export default function AdminHome() {
   );
 
   const inventoryColors = useMemo(
-    () =>
-      inventoryChartData.map((_, index) => {
-        const hue = (index * 67) % 360;
-        return `hsl(${hue} 80% 60%)`;
-      }),
+    () => {
+      const colors = ['#003f5c', '#58508d', '#bc5090', '#ff6361', '#ffa600'];
+      return inventoryChartData.map((_, index) => colors[index % colors.length]);
+    },
     [inventoryChartData]
   );
 
