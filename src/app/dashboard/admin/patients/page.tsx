@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 type VaccRow = {
@@ -97,7 +97,7 @@ const dedupeDoses = (doses: VaccRow[]): VaccRow[] => {
 
 export default function AdminPatientsPage() {
   const [vaccs, setVaccs] = useState<VaccRow[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
+  const [profiles] = useState<Record<string, Profile>>({});
   const [itemNames, setItemNames] = useState<Record<string, string>>({});
   const [availableItems, setAvailableItems] = useState<InventoryItem[]>([]);
   const [appointmentContacts, setAppointmentContacts] = useState<Record<string, AppointmentInfo[]>>({});
@@ -194,7 +194,7 @@ export default function AdminPatientsPage() {
     return nursesData || [];
   }
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     let errorMessage: string | null = null;
@@ -312,11 +312,11 @@ export default function AdminPatientsPage() {
     }
 
     setLoading(false);
-  }
+  }, [])
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const progressClass = (dose: number) =>
     dose >= 3
